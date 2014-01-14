@@ -1,0 +1,19 @@
+[package]
+name = "tr-wasm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+description = "Terraria Wasm cdylib：导出 C ABI，产物拷至 projects/platforms/wasm/terraria-unknown-wasm32"
+keywords = ["terraria", "wasm"]
+categories = ["game-development", "wasm"]
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+spark-core = { workspace = true }
+tr-core = { workspace = true }

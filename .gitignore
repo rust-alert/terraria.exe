@@ -1,0 +1,16 @@
+# IDE
+.idea/
+*.log
+*.txt
+
+# Rust
+target/
+
+# 本机把 Spark git 依赖覆盖成 path。模板见 `.cargo/config.toml.example`。
+.cargo/config.toml
+
+# Node
+node_modules/
+dist/
+*.node
+*.wasm

@@ -1,0 +1,28 @@
+[package]
+name = "tr-napi"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+description = "Terraria Node-API：唯一运行时宿主，供 @game-gpt/terraria CLI 调用"
+keywords = ["terraria", "napi", "nodejs"]
+categories = ["game-development", "api-bindings"]
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+node = ["dep:napi", "dep:napi-derive"]
+
+[dependencies]
+tr-game = { workspace = true }
+tr-core = { workspace = true }
+spark-core = { workspace = true }
+napi = { workspace = true, optional = true }
+napi-derive = { workspace = true, optional = true }
+
+[package.metadata.napi]
+name = "@game-gpt/terraria"

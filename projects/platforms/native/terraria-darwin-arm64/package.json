@@ -1,0 +1,19 @@
+{
+    "name": "@game-gpt/terraria-darwin-arm64",
+    "version": "0.0.0",
+    "private": true,
+    "description": "Terraria native N-API addon (darwin-arm64)",
+    "license": "Apache-2.0",
+    "os": [
+        "darwin"
+    ],
+    "cpu": [
+        "arm64"
+    ],
+    "main": "tr.darwin-arm64.node",
+    "files": [
+        "tr.darwin-arm64.node",
+        "README.md"
+    ],
+    "preferUnplugged": true
+}

@@ -1,0 +1,18 @@
+[package]
+name = "tr-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+description = "Terraria 游戏基类型"
+keywords = ["terraria", "sandbox"]
+categories = ["game-development"]
+publish = false
+
+[dependencies]
+spark-core = { workspace = true }
+tr-types = { workspace = true }
+
+[dev-dependencies]
+tr-types = { workspace = true }

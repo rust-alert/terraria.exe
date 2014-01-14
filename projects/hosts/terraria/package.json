@@ -1,0 +1,47 @@
+{
+    "name": "@game-gpt/terraria",
+    "version": "0.0.0",
+    "description": "Terraria Rust rewrite：经 N-API 启动。唯一入口 terraria emulate --path <正版安装目录>",
+    "type": "commonjs",
+    "bin": {
+        "terraria": "./dist/cli.js"
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist",
+        "README.md"
+    ],
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "typecheck": "tsc -p tsconfig.json --noEmit"
+    },
+    "optionalDependencies": {
+        "@game-gpt/terraria-win32-x64": "workspace:*",
+        "@game-gpt/terraria-win32-arm64": "workspace:*",
+        "@game-gpt/terraria-darwin-x64": "workspace:*",
+        "@game-gpt/terraria-darwin-arm64": "workspace:*",
+        "@game-gpt/terraria-linux-x64": "workspace:*",
+        "@game-gpt/terraria-linux-arm64": "workspace:*",
+        "@game-gpt/terraria-unknown-wasm32": "workspace:*"
+    },
+    "devDependencies": {
+        "@types/node": "^22.10.0",
+        "typescript": "^5.7.0"
+    },
+    "engines": {
+        "node": ">=18"
+    },
+    "license": "Apache-2.0",
+    "keywords": [
+        "terraria",
+        "napi",
+        "rust"
+    ]
+}

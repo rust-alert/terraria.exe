@@ -1,0 +1,15 @@
+[package]
+name = "tr-types"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+description = "Terraria 内容 schema：无实体类型、LocaleText 与字段覆盖合并"
+keywords = ["terraria", "content", "schema"]
+categories = ["game-development"]
+publish = false
+
+[dependencies]
+spark-core = { workspace = true }
+spark-localization = { workspace = true }

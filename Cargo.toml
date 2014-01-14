@@ -1,0 +1,44 @@
+[workspace]
+resolver = "2"
+members = [
+    "projects/engine/*",
+    "projects/bindings/*",
+]
+default-members = [
+    "projects/bindings/tr-napi",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+authors = ["Aster <192607617@qq.com>"]
+license = "Apache-2.0"
+readme = "readme.md"
+
+[workspace.dependencies]
+tr-types = { path = "projects/engine/tr-types" }
+tr-core = { path = "projects/engine/tr-core" }
+tr-game = { path = "projects/engine/tr-game" }
+tr-napi = { path = "projects/bindings/tr-napi" }
+tr-wasm = { path = "projects/bindings/tr-wasm" }
+# Spark 走 git `dev`。本机 path 覆盖放在已 gitignore 的 `.cargo/config.toml`。
+spark-core = { git = "https://github.com/game-gpt/SparkleEngine.git", branch = "dev" }
+spark-ecs = { git = "https://github.com/game-gpt/SparkleEngine.git", branch = "dev" }
+spark-time = { git = "https://github.com/game-gpt/SparkleEngine.git", branch = "dev" }
+spark-input = { git = "https://github.com/game-gpt/SparkleEngine.git", branch = "dev" }
+spark-localization = { git = "https://github.com/game-gpt/SparkleEngine.git", branch = "dev" }
+spark-renderer = { git = "https://github.com/game-gpt/SparkleEngine.git", branch = "dev" }
+spark-renderer-wgpu = { git = "https://github.com/game-gpt/SparkleEngine.git", branch = "dev" }
+spark-engine = { git = "https://github.com/game-gpt/SparkleEngine.git", branch = "dev" }
+spark-widget = { git = "https://github.com/game-gpt/SparkleEngine.git", branch = "dev" }
+spark-audio = { git = "https://github.com/game-gpt/SparkleEngine.git", branch = "dev" }
+spark-image = { git = "https://github.com/game-gpt/SparkleEngine.git", branch = "dev" }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+napi = { version = "2", default-features = false, features = ["napi4"] }
+napi-derive = "2"
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = true

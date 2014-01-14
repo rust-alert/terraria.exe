@@ -1,0 +1,20 @@
+{
+    "name": "terraria",
+    "private": true,
+    "description": "Terraria 工作区。产品入口为 @game-gpt/terraria。",
+    "packageManager": "pnpm@11.24.0",
+    "scripts": {
+        "fmt": "node scripts/format.mjs",
+        "launch": "node scripts/launch.mjs",
+        "build": "pnpm --filter @game-gpt/terraria --filter @game-gpt/terraria-unknown-wasm32 build",
+        "typecheck": "pnpm --filter @game-gpt/terraria typecheck",
+        "napi:build": "node scripts/build/napi.mjs",
+        "napi:build:release": "node scripts/build/napi.mjs --release"
+    },
+    "devDependencies": {
+        "@biomejs/biome": "2.5.14",
+        "@game-gpt/terraria": "workspace:*",
+        "@types/node": "^26.6.1",
+        "typescript": "^5.9.3"
+    }
+}

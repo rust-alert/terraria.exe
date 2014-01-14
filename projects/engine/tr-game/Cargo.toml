@@ -1,0 +1,26 @@
+[package]
+name = "tr-game"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+description = "Terraria 游戏逻辑库：仅由 tr-napi / CLI 拉起，不提供独立二进制入口"
+keywords = ["terraria", "sandbox"]
+categories = ["game-development"]
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+tr-core = { workspace = true }
+spark-core = { workspace = true }
+spark-input = { workspace = true }
+spark-renderer = { workspace = true }
+spark-engine = { workspace = true }
+spark-widget = { workspace = true }
+spark-audio = { workspace = true }
+spark-image = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

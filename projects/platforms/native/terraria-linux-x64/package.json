@@ -1,0 +1,19 @@
+{
+    "name": "@game-gpt/terraria-linux-x64",
+    "version": "0.0.0",
+    "private": true,
+    "description": "Terraria native N-API addon (linux-x64)",
+    "license": "Apache-2.0",
+    "os": [
+        "linux"
+    ],
+    "cpu": [
+        "x64"
+    ],
+    "main": "tr.linux-x64-gnu.node",
+    "files": [
+        "tr.linux-x64-gnu.node",
+        "README.md"
+    ],
+    "preferUnplugged": true
+}
