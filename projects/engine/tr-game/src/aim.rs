@@ -176,7 +176,7 @@ fn has_support(world: &World, tx: i32, ty: i32) -> bool {
     const DIRS: [(i32, i32); 4] = [(0, 1), (0, -1), (1, 0), (-1, 0)];
     for (dx, dy) in DIRS {
         let n = world.get(tx + dx, ty + dy);
-        if n.blocks_motion() || n == BlockId::POD {
+        if n.blocks_motion() {
             return true;
         }
     }
@@ -187,11 +187,9 @@ fn is_interactable(world: &World, tx: i32, ty: i32) -> bool {
     matches!(
         world.get(tx, ty),
         BlockId::CHEST
-            | BlockId::POD
             | BlockId::BED
             | BlockId::WORKBENCH
             | BlockId::FURNACE
-            | BlockId::WARP
     )
 }
 

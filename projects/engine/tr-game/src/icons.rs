@@ -267,31 +267,6 @@ fn paint_icon(rgba: &mut [u8], stride_w: u32, col: u32, row: u32, id: ItemId) {
                 Color::rgb(0.70, 0.78, 0.90),
             );
         }
-        ItemId::SCRAP => {
-            fill(
-                rgba,
-                stride_w,
-                x0,
-                y0,
-                4,
-                5,
-                8,
-                6,
-                Color::rgb(0.72, 0.55, 0.28),
-            );
-            fill(
-                rgba,
-                stride_w,
-                x0,
-                y0,
-                5,
-                6,
-                2,
-                2,
-                Color::rgb(0.95, 0.82, 0.35),
-            );
-            fill(rgba, stride_w, x0, y0, 9, 7, 2, 2, metal);
-        }
         ItemId::WOOD => {
             fill(rgba, stride_w, x0, y0, 5, 2, 6, 12, wood);
             fill(rgba, stride_w, x0, y0, 5, 2, 1, 12, wood_d);
@@ -520,33 +495,6 @@ fn paint_icon(rgba: &mut [u8], stride_w: u32, col: u32, row: u32, id: ItemId) {
             );
             px(rgba, stride_w, x0, y0, 5, 5, Color::rgb(1.0, 0.55, 0.15));
             px(rgba, stride_w, x0, y0, 10, 4, Color::rgb(1.0, 0.55, 0.15));
-        }
-        ItemId::WARP => {
-            fill(rgba, stride_w, x0, y0, 5, 3, 6, 10, purple);
-            fill(
-                rgba,
-                stride_w,
-                x0,
-                y0,
-                6,
-                4,
-                4,
-                8,
-                Color::rgb(0.25, 0.12, 0.35),
-            );
-            fill(
-                rgba,
-                stride_w,
-                x0,
-                y0,
-                7,
-                6,
-                2,
-                4,
-                Color::rgb(0.9, 0.7, 1.0),
-            );
-            px(rgba, stride_w, x0, y0, 4, 5, magic);
-            px(rgba, stride_w, x0, y0, 11, 9, magic);
         }
         ItemId::GEL => {
             fill(rgba, stride_w, x0, y0, 5, 5, 6, 7, purple);

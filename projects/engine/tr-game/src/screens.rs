@@ -5,8 +5,6 @@ use spark_input::{Input, Key, MouseBtn};
 use spark_renderer::DrawList;
 use spark_widget::{label, panel};
 
-use tr_core::RaceId;
-
 use crate::app::{Screen, TerrariaApp};
 
 impl TerrariaApp {
@@ -32,10 +30,6 @@ impl TerrariaApp {
     pub(crate) fn ui_new_game(&mut self, input: &Input) {
         let sw = self.screen_w;
         let sh = self.screen_h;
-        let card = Rect::new(sw * 0.5 - 200.0, 200.0, 400.0, 160.0);
-        if Self::hit(input, Rect::new(card.x + 24.0, card.y + 110.0, 120.0, 36.0)) {
-            self.race = RaceId::HUMAN;
-        }
         if Self::hit(input, Rect::new(sw * 0.5 - 140.0, sh - 140.0, 280.0, 52.0))
             || input.key_pressed(Key::Enter)
         {
@@ -112,7 +106,7 @@ impl TerrariaApp {
             sh * 0.22 + 100.0,
             18.0,
             Color::rgb(0.55, 0.62, 0.75),
-            "从逃生舱醒来，走向宇宙的核心",
+            "Spark 上的 Terraria 重写",
         );
         let bx = sw * 0.5 - 140.0;
         Self::paint_btn(draw, bx, sh * 0.55, 280.0, 52.0, "新游戏");
@@ -129,42 +123,22 @@ impl TerrariaApp {
         );
         label(
             draw,
-            sw * 0.5 - 80.0,
-            80.0,
+            sw * 0.5 - 100.0,
+            120.0,
             32.0,
             Color::rgb(0.9, 0.95, 1.0),
-            "选择种族",
+            "新游戏",
         );
         label(
             draw,
-            sw * 0.5 - 180.0,
-            130.0,
+            sw * 0.5 - 160.0,
+            180.0,
             18.0,
             Color::rgb(0.6, 0.68, 0.8),
-            "当前竖切仅开放：人类（温带行星）",
+            "进入小型测试世界（后续对齐正版）",
         );
-        let card = Rect::new(sw * 0.5 - 200.0, 200.0, 400.0, 160.0);
-        panel(draw, card, Color::rgb(0.12, 0.28, 0.42));
-        label(
-            draw,
-            card.x + 24.0,
-            card.y + 28.0,
-            26.0,
-            Color::rgb(0.95, 0.95, 1.0),
-            "人类",
-        );
-        label(
-            draw,
-            card.x + 24.0,
-            card.y + 70.0,
-            18.0,
-            Color::rgb(0.7, 0.78, 0.9),
-            "动能武器 · 自造火箭离星 · 均衡玩法",
-        );
-        Self::paint_btn(draw, card.x + 24.0, card.y + 110.0, 120.0, 36.0, "选定");
-        Self::paint_btn(draw, sw * 0.5 - 140.0, sh - 140.0, 280.0, 52.0, "开始苏醒");
+        Self::paint_btn(draw, sw * 0.5 - 140.0, sh - 140.0, 280.0, 52.0, "开始游戏");
         Self::paint_btn(draw, 40.0, sh - 80.0, 140.0, 44.0, "返回");
-        let _ = self.race;
     }
 
     pub(crate) fn paint_pause(&self, draw: &mut DrawList) {

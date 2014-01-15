@@ -35,14 +35,10 @@ impl BlockId {
     pub const DIRT: Self = Self(1);
     pub const GRASS: Self = Self(2);
     pub const STONE: Self = Self(3);
-    pub const SCRAP: Self = Self(4);
-    pub const POD: Self = Self(5);
     pub const WOOD: Self = Self(6);
     pub const LEAF: Self = Self(7);
     pub const WORKBENCH: Self = Self(8);
     pub const SAPLING: Self = Self(9);
-    /// 传送节点（裂痕锚）。
-    pub const WARP: Self = Self(10);
     /// 火把（可穿行，夜间照明）。
     pub const TORCH: Self = Self(11);
     /// 木平台（可站立，便于架空建造）。
@@ -99,7 +95,6 @@ impl BlockId {
             Self::AIR
                 | Self::LEAF
                 | Self::SAPLING
-                | Self::WARP
                 | Self::TORCH
                 | Self::LADDER
                 | Self::ROPE
@@ -128,10 +123,10 @@ impl BlockId {
     pub fn mineable(self) -> bool {
         if let Some(c) = try_content() {
             if let Some(d) = c.block(self) {
-                return d.mineable() && self != Self::POD;
+                return d.mineable();
             }
         }
-        !matches!(self, Self::AIR | Self::POD | Self::WATER) && self.max_hp() < u16::MAX
+        !matches!(self, Self::AIR | Self::WATER) && self.max_hp() < u16::MAX
     }
 
     /// 开采所需最低镐力；`None` 表示徒手可挖。
@@ -161,8 +156,6 @@ impl BlockId {
         }
         match self {
             Self::TORCH => 8,
-            Self::POD => 6,
-            Self::WARP => 4,
             Self::FURNACE => 5,
             _ => 0,
         }
@@ -186,10 +179,9 @@ impl BlockId {
             Self::PLATFORM | Self::BED => 40,
             Self::DIRT | Self::GRASS | Self::SAND | Self::SNOW => 50,
             Self::WOOD | Self::CHEST => 60,
-            Self::SCRAP | Self::COPPER_ORE => 80,
+            Self::COPPER_ORE => 80,
             Self::STONE | Self::WORKBENCH | Self::FURNACE => 100,
-            Self::IRON_ORE | Self::WARP => 150,
-            Self::POD => u16::MAX,
+            Self::IRON_ORE => 150,
             _ => 100,
         }
     }
@@ -200,13 +192,10 @@ impl BlockId {
             Self::DIRT => "泥土",
             Self::GRASS => "草皮",
             Self::STONE => "石头",
-            Self::SCRAP => "废料",
-            Self::POD => "逃生舱",
             Self::WOOD => "木材",
             Self::LEAF => "树叶",
             Self::WORKBENCH => "工作台",
             Self::SAPLING => "树苗",
-            Self::WARP => "裂痕锚",
             Self::TORCH => "火把",
             Self::PLATFORM => "木平台",
             Self::CHEST => "木箱",
@@ -237,11 +226,9 @@ impl BlockId {
         match self {
             Self::DIRT | Self::GRASS => Some(ItemId::DIRT),
             Self::STONE => Some(ItemId::STONE),
-            Self::SCRAP => Some(ItemId::SCRAP),
             Self::WOOD => Some(ItemId::WOOD),
             Self::WORKBENCH => Some(ItemId::WORKBENCH),
             Self::SAPLING => Some(ItemId::SAPLING),
-            Self::WARP => Some(ItemId::WARP),
             Self::TORCH => Some(ItemId::TORCH),
             Self::PLATFORM => Some(ItemId::PLATFORM),
             Self::CHEST => Some(ItemId::CHEST),
@@ -253,7 +240,7 @@ impl BlockId {
             Self::FURNACE => Some(ItemId::FURNACE),
             Self::BED => Some(ItemId::BED),
             Self::ROPE => Some(ItemId::ROPE),
-            Self::LEAF | Self::AIR | Self::POD | Self::WATER => None,
+            Self::LEAF | Self::AIR | Self::WATER => None,
             _ => None,
         }
     }
@@ -323,14 +310,12 @@ pub struct ItemId(pub u32);
 impl ItemId {
     pub const DIRT: Self = Self(1);
     pub const STONE: Self = Self(3);
-    pub const SCRAP: Self = Self(4);
     pub const WOOD: Self = Self(6);
     pub const WORKBENCH: Self = Self(8);
     pub const SAPLING: Self = Self(9);
     pub const WOOD_PICK: Self = Self(10);
     pub const STONE_PICK: Self = Self(11);
     pub const WOOD_SWORD: Self = Self(12);
-    pub const WARP: Self = Self(13);
     pub const TORCH: Self = Self(14);
     pub const GEL: Self = Self(15);
     pub const PLATFORM: Self = Self(16);
@@ -361,18 +346,22 @@ impl ItemId {
     pub const ROPE: Self = Self(36);
     /// 木锤：拆除背景墙。
     pub const WOOD_HAMMER: Self = Self(37);
+    /// 木墙：只铺背景墙。
+    pub const WOOD_WALL: Self = Self(38);
+    /// 石墙：只铺背景墙。
+    pub const STONE_WALL: Self = Self(39);
+    /// 铜币（正版 `Item_71`）。
+    pub const COPPER_COIN: Self = Self(40);
 
-    pub const ALL: [Self; 34] = [
+    pub const ALL: [Self; 35] = [
         Self::DIRT,
         Self::STONE,
-        Self::SCRAP,
         Self::WOOD,
         Self::WORKBENCH,
         Self::SAPLING,
         Self::WOOD_PICK,
         Self::STONE_PICK,
         Self::WOOD_SWORD,
-        Self::WARP,
         Self::TORCH,
         Self::GEL,
         Self::PLATFORM,
@@ -397,20 +386,21 @@ impl ItemId {
         Self::CLOUD_BOTTLE,
         Self::ROPE,
         Self::WOOD_HAMMER,
+        Self::WOOD_WALL,
+        Self::STONE_WALL,
+        Self::COPPER_COIN,
     ];
 
     pub fn name(self) -> &'static str {
         match self {
             Self::DIRT => "泥土",
             Self::STONE => "石头",
-            Self::SCRAP => "废料",
             Self::WOOD => "木材",
             Self::WORKBENCH => "工作台",
             Self::SAPLING => "树苗",
             Self::WOOD_PICK => "木镐",
             Self::STONE_PICK => "石镐",
             Self::WOOD_SWORD => "木剑",
-            Self::WARP => "裂痕锚",
             Self::TORCH => "火把",
             Self::GEL => "凝胶",
             Self::PLATFORM => "木平台",
@@ -435,6 +425,9 @@ impl ItemId {
             Self::CLOUD_BOTTLE => "凝胶云瓶",
             Self::ROPE => "绳索",
             Self::WOOD_HAMMER => "木锤",
+            Self::WOOD_WALL => "木墙",
+            Self::STONE_WALL => "石墙",
+            Self::COPPER_COIN => "铜币",
             _ => "未知",
         }
     }
@@ -476,11 +469,9 @@ impl ItemId {
         match self {
             Self::DIRT => Some(BlockId::DIRT),
             Self::STONE => Some(BlockId::STONE),
-            Self::SCRAP => Some(BlockId::SCRAP),
             Self::WOOD => Some(BlockId::WOOD),
             Self::WORKBENCH => Some(BlockId::WORKBENCH),
             Self::SAPLING => Some(BlockId::SAPLING),
-            Self::WARP => Some(BlockId::WARP),
             Self::TORCH => Some(BlockId::TORCH),
             Self::PLATFORM => Some(BlockId::PLATFORM),
             Self::CHEST => Some(BlockId::CHEST),
@@ -507,6 +498,8 @@ impl ItemId {
             Self::DIRT => Some(WallId::DIRT),
             Self::STONE => Some(WallId::STONE),
             Self::WOOD => Some(WallId::WOOD),
+            Self::WOOD_WALL => Some(WallId::WOOD),
+            Self::STONE_WALL => Some(WallId::STONE),
             _ => None,
         }
     }
@@ -585,14 +578,6 @@ impl ItemId {
             _ => 0,
         }
     }
-}
-
-/// 种族标识。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct RaceId(pub u32);
-
-impl RaceId {
-    pub const HUMAN: Self = Self(0);
 }
 
 #[derive(Debug)]

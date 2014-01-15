@@ -34,17 +34,17 @@ impl BiomeId {
     }
 }
 
-/// 由种子与列 X 决定地表群系（绕环四段为主）。
+/// 由种子与列 X 决定地表群系（有限边界分段）。
 pub fn biome_at(seed: u64, x: i32) -> BiomeId {
-    let w = 160i32;
-    let tx = ((x % w) + w) % w;
+    // 与 `tr-game` 世界宽 / 出生列对齐；夹具世界放大时同步改这里。
+    const WORLD_W: i32 = 420;
+    const SPAWN_X: i32 = WORLD_W / 2;
+    let tx = x.clamp(0, WORLD_W - 1);
     // 出生点附近强制草甸，避免开局困在沙/雪
-    let spawn = 24;
-    let dist = (tx - spawn).rem_euclid(w).min((spawn - tx).rem_euclid(w));
-    if dist < 18 {
+    if (tx - SPAWN_X).abs() < 28 {
         return BiomeId::Meadow;
     }
-    let band = (tx * 4) / w;
+    let band = (tx * 4) / WORLD_W;
     let jitter = ((seed.wrapping_mul(0x9E37_79B9) ^ (tx as u64).wrapping_mul(17)) % 3) as i32;
     match (band + jitter).rem_euclid(4) {
         0 => BiomeId::Meadow,

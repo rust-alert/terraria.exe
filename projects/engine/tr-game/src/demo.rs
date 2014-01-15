@@ -3,7 +3,6 @@
 use tr_core::ItemId;
 
 use crate::enemy::try_melee;
-use crate::portal;
 use crate::save::{SessionExtra, save_session};
 use crate::world::{TILE, WORLD_H, WORLD_W, wrap_tx};
 
@@ -225,7 +224,6 @@ impl TerrariaApp {
             player.inv.add(ItemId::COPPER_ORE, 6);
             player.inv.add(ItemId::IRON_ORE, 3);
             player.inv.add(ItemId::STONE, 20);
-            player.inv.add(ItemId::SCRAP, 8);
             player.inv.add(ItemId::WOOD, 20);
             let furnace_idx = crate::craft::RECIPES
                 .iter()
@@ -367,28 +365,15 @@ impl TerrariaApp {
             let (sx, sy) = world.spawn_pos();
             player.x = sx;
             player.y = sy;
-            if let Some(name) = portal::force_warp_next(player, world, &mut self.portal) {
-                tracing::info!(name, "demo portal warp");
-            }
-            self.seen_warp = true;
-            self.warped_once = true;
             self.survived_night = true;
             let _ = player.inv.add(ItemId::COPPER_ORE, 3);
-            self.objective = self.objective.advance(player, world, true, true, true);
-            tracing::info!(obj = self.objective.title(), "demo objective");
-            if let Some(msg) = player.interact_pod(world) {
-                tracing::info!(msg, "demo pod");
-            }
             match save_session(
                 world,
                 player,
                 &self.enemies,
                 SessionExtra {
                     day_t: self.day_t,
-                    seen_warp: self.seen_warp,
-                    warped_once: self.warped_once,
                     survived_night: self.survived_night,
-                    objective: self.objective,
                 },
             ) {
                 Ok(p) => tracing::info!(path = %p.display(), "demo save"),
@@ -424,7 +409,7 @@ impl TerrariaApp {
             "screen={screen} player=({px:.1},{py:.1}) hp={} enemies={} obj={} craft={} demo={}\n",
             self.player.as_ref().map(|p| p.hp).unwrap_or(0.0),
             self.enemies.len(),
-            self.objective.title(),
+            "-",
             self.craft_open,
             self.demo
         );

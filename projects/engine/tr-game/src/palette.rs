@@ -173,8 +173,6 @@ pub const HUD_HOTBAR_RING_IDLE: Color = Color::rgb(0.20, 0.24, 0.32);
 /// 光源染色（彩色光照 P1 前先统一常量，避免各处硬编码）。
 pub const GLOW_TORCH: Color = Color::rgb(1.0, 0.72, 0.32);
 pub const GLOW_FURNACE: Color = Color::rgb(1.0, 0.45, 0.18);
-pub const GLOW_POD: Color = Color::rgb(0.45, 0.85, 1.0);
-pub const GLOW_WARP: Color = Color::rgb(0.78, 0.45, 1.0);
 pub const GLOW_DEFAULT: Color = Color::rgb(1.0, 0.85, 0.55);
 pub const GLOW_COPPER: Color = Color::rgb(1.0, 0.55, 0.22);
 pub const GLOW_IRON: Color = Color::rgb(0.78, 0.86, 0.95);

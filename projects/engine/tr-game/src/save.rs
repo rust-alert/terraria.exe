@@ -1,36 +1,27 @@
-//! 会话快档：方块全表 + 玩家 / 目标 / 日时（无第三方序列化）。
+//! 会话快档：方块全表 + 玩家 / 日时（无第三方序列化）。
 
 use std::path::PathBuf;
 
 use tr_core::ItemId;
 
 use crate::enemy::Enemy;
-use crate::objective::Objective;
 use crate::player::Player;
 use crate::world::World;
 
-const MAGIC_V1: &str = "ASTRACRAFT_SAVE_V1";
-const MAGIC_V2: &str = "ASTRACRAFT_SAVE_V2";
-const MAGIC_V3: &str = "ASTRACRAFT_SAVE_V3";
+const MAGIC_V1: &str = "TERRARIA_SAVE_V1";
 
 /// 与方块/背包并列的会话元数据。
 #[derive(Debug, Clone, Copy)]
 pub struct SessionExtra {
     pub day_t: f32,
-    pub seen_warp: bool,
-    pub warped_once: bool,
     pub survived_night: bool,
-    pub objective: Objective,
 }
 
 impl Default for SessionExtra {
     fn default() -> Self {
         Self {
             day_t: 40.0,
-            seen_warp: false,
-            warped_once: false,
             survived_night: false,
-            objective: Objective::GatherWood,
         }
     }
 }
@@ -41,39 +32,6 @@ pub fn quick_save_path() -> PathBuf {
         .join("terraria_quick.sav")
 }
 
-fn objective_tag(o: Objective) -> &'static str {
-    match o {
-        Objective::GatherWood => "gather_wood",
-        Objective::CraftWorkbench => "craft_workbench",
-        Objective::PlaceWorkbench => "place_workbench",
-        Objective::CraftPick => "craft_pick",
-        Objective::PlaceBed => "place_bed",
-        Objective::SurviveNight => "survive_night",
-        Objective::CraftStonePick => "craft_stone_pick",
-        Objective::MineCopper => "mine_copper",
-        Objective::FindWarp => "find_warp",
-        Objective::WarpOnce => "warp_once",
-        Objective::Done => "done",
-    }
-}
-
-fn parse_objective(s: &str) -> Option<Objective> {
-    Some(match s {
-        "gather_wood" => Objective::GatherWood,
-        "craft_workbench" => Objective::CraftWorkbench,
-        "place_workbench" => Objective::PlaceWorkbench,
-        "craft_pick" => Objective::CraftPick,
-        "place_bed" => Objective::PlaceBed,
-        "survive_night" => Objective::SurviveNight,
-        "craft_stone_pick" => Objective::CraftStonePick,
-        "mine_copper" => Objective::MineCopper,
-        "find_warp" => Objective::FindWarp,
-        "warp_once" => Objective::WarpOnce,
-        "done" => Objective::Done,
-        _ => return None,
-    })
-}
-
 pub fn save_session(
     world: &World,
     player: &Player,
@@ -82,15 +40,12 @@ pub fn save_session(
 ) -> Result<PathBuf, String> {
     let path = quick_save_path();
     let mut out = String::new();
-    out.push_str(MAGIC_V3);
+    out.push_str(MAGIC_V1);
     out.push('\n');
     out.push_str(&format!("seed={}\n", world.seed));
     out.push_str(&format!(
-        "meta={:.3},{},{},{},{}\n",
+        "meta={:.3},{}\n",
         extra.day_t,
-        u8::from(extra.seen_warp),
-        u8::from(extra.warped_once),
-        objective_tag(extra.objective),
         u8::from(extra.survived_night),
     ));
     out.push_str(&format!(
@@ -122,7 +77,6 @@ pub fn save_session(
     out.push_str("accessory=");
     out.push_str(&player.inv.encode_accessory());
     out.push('\n');
-    // 兼容旧读档：仍写汇总 inv 行
     let inv = player
         .inv
         .entries()
@@ -168,8 +122,8 @@ pub fn load_session(
     let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let mut lines = text.lines();
     let magic = lines.next().ok_or("空存档")?;
-    if magic != MAGIC_V1 && magic != MAGIC_V2 && magic != MAGIC_V3 {
-        return Err("存档版本不匹配".into());
+    if magic != MAGIC_V1 {
+        return Err("存档版本不匹配（需要 TERRARIA_SAVE_V1）".into());
     }
     let mut seed = world.seed;
     let mut blocks_raw = None;
@@ -220,7 +174,6 @@ pub fn load_session(
         }
     }
     if seed != world.seed {
-        // 同会话种子不一致则整表重建再覆盖方块
         *world = World::generate(seed);
     }
     let blocks = blocks_raw.ok_or("缺 blocks")?;
@@ -284,14 +237,13 @@ pub fn load_session(
             player.inv.load_accessory(ac);
         }
     } else if let Some(inv) = inv_raw {
-        // 旧存档：汇总数量灌入
         for part in inv.split(',').filter(|s| !s.is_empty()) {
             let (a, b) = part.split_once(':').ok_or("inv 项")?;
             let id = ItemId(a.parse().map_err(|_| "item id")?);
             let n: u32 = b.parse().map_err(|_| "item n")?;
             let _ = player.inv.add(id, n);
         }
-        let _ = tdur_raw; // 旧耐久池已并入堆字段，忽略
+        let _ = tdur_raw;
     }
     enemies.clear();
     if let Some(eline) = enemies_raw {
@@ -314,16 +266,11 @@ pub fn load_session(
     }
     if let Some(m) = meta_raw {
         let parts: Vec<&str> = m.split(',').collect();
-        if parts.len() >= 4 {
+        if !parts.is_empty() {
             extra.day_t = parts[0].parse().unwrap_or(extra.day_t);
-            extra.seen_warp = parts[1] == "1";
-            extra.warped_once = parts[2] == "1";
-            if let Some(o) = parse_objective(parts[3]) {
-                extra.objective = o;
-            }
-            if parts.len() >= 5 {
-                extra.survived_night = parts[4] == "1";
-            }
+        }
+        if parts.len() >= 2 {
+            extra.survived_night = parts[1] == "1";
         }
     }
     Ok(())
