@@ -57,4 +57,20 @@ impl JsTerrariaHost {
     pub fn emulate(&self, path: String) -> Result<()> {
         self.inner.emulate(&path).map_err(Error::from_reason)
     }
+
+    /// `terraria unpack`：写出未压缩 XNB。
+    #[napi]
+    pub fn unpack(&self, path: String, out: String, only: Vec<String>) -> Result<String> {
+        self.inner
+            .unpack(&path, &out, &only)
+            .map_err(Error::from_reason)
+    }
+
+    /// `terraria extract`：把贴图写成 PNG。
+    #[napi]
+    pub fn extract(&self, path: String, out: String, only: Vec<String>) -> Result<String> {
+        self.inner
+            .extract(&path, &out, &only)
+            .map_err(Error::from_reason)
+    }
 }

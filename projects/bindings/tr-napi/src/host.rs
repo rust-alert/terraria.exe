@@ -4,7 +4,9 @@ use std::path::PathBuf;
 
 use spark_core::Vec2;
 
-use tr_game::{EmulateOptions, run_emulate, validate_original_install};
+use tr_game::{
+    EmulateOptions, extract_content, run_emulate, unpack_content, validate_original_install,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostInfo {
@@ -55,5 +57,17 @@ impl TerrariaJsHost {
     /// 唯一启动：阻塞直至窗口关闭。
     pub fn emulate(&self, path: &str) -> Result<(), String> {
         run_emulate(EmulateOptions::new(path))
+    }
+
+    /// 把正版 XNB 解成未压缩 XNB。`out` 必须在仓库和安装目录之外。
+    pub fn unpack(&self, path: &str, out: &str, only: &[String]) -> Result<String, String> {
+        validate_original_install(PathBuf::from(path).as_path())?;
+        unpack_content(PathBuf::from(path).as_path(), PathBuf::from(out).as_path(), only)
+    }
+
+    /// 把正版 `Texture2D` 写成 PNG。PNG 编码走 `spark-image`。
+    pub fn extract(&self, path: &str, out: &str, only: &[String]) -> Result<String, String> {
+        validate_original_install(PathBuf::from(path).as_path())?;
+        extract_content(PathBuf::from(path).as_path(), PathBuf::from(out).as_path(), only)
     }
 }

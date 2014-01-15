@@ -38,6 +38,18 @@ pnpm launch -- --path "<正版安装根>"
 | `TR_CONTENT`     | 由 `emulate` 自动写入，指向 `--path` |
 | `TR_NATIVE_NODE` | 可选，强制指定 `.node` 路径          |
 
+## 素材命令
+
+窗口以外还可以：
+
+```bash
+terraria unpack --path <正版安装根> --out <仓库外目录>
+terraria extract --path <正版安装根> --out <仓库外目录> [--only Tiles_0.xnb]
+```
+
+`extract` 的 PNG 由 Spark 像素图写出。输出目录不能在本仓库或正版安装目录内。
+
+
 ## 开发构建
 
 Spark 依赖根 `Cargo.toml` 的 git `dev` 分支。本机已有检出时，把 `.cargo/config.toml.example` 复制为 `.cargo/config.toml`（不入库），用 path 覆盖。不要改 `Cargo.toml`。

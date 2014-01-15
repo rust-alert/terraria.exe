@@ -31,6 +31,10 @@ export interface TerrariaHostBindings {
     validatePath(path: string): void;
     /** 阻塞至窗口关闭。`path` 必须是正版 Terraria 安装根。 */
     emulate(path: string): void;
+    /** 写出未压缩 XNB。`out` 必须在仓库和安装目录之外。 */
+    unpack(path: string, out: string, only: string[]): string;
+    /** 把 Texture2D 写成 PNG。编码走 spark-image。 */
+    extract(path: string, out: string, only: string[]): string;
 }
 
 interface TerrariaAddon {
@@ -40,6 +44,8 @@ interface TerrariaAddon {
         blockCount(): number;
         validatePath(path: string): void;
         emulate(path: string): void;
+        unpack(path: string, out: string, only: string[]): string;
+        extract(path: string, out: string, only: string[]): string;
     };
 }
 
@@ -52,6 +58,7 @@ let _cached: TerrariaHostBindings | undefined;
 /**
  * 加载当前平台原生绑定。
  * 窗口启动只能走 `host.emulate(originalInstallPath)`。
+ * `unpack` / `extract` 不打开窗口。
  */
 export function loadTerraria(_options: LoadOptions = {}): TerrariaHostBindings {
     if (_cached) return _cached;
@@ -81,6 +88,8 @@ export function loadTerraria(_options: LoadOptions = {}): TerrariaHostBindings {
         blockCount: () => host.blockCount(),
         validatePath: (path) => host.validatePath(path),
         emulate: (path) => host.emulate(path),
+        unpack: (path, out, only) => host.unpack(path, out, only),
+        extract: (path, out, only) => host.extract(path, out, only),
     };
     return _cached;
 }

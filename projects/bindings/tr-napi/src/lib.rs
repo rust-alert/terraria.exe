@@ -1,14 +1,15 @@
 #![warn(missing_docs)]
 //! Terraria **Node-API** 绑定。
 //!
-//! 产品唯一启动链：
+//! 产品入口：
 //!
 //! ```text
 //! terraria emulate --path <原版安装目录>
-//!   → @game-gpt/terraria (CLI)
-//!   → tr-napi (本 crate, feature = node)
-//!   → tr-game::run_emulate
+//! terraria unpack --path <安装根> --out <目录>
+//! terraria extract --path <安装根> --out <目录>
 //! ```
+//!
+//! 窗口只由 `emulate` 打开。
 //!
 //! ```text
 //! cargo build -p tr-napi --release --features node
