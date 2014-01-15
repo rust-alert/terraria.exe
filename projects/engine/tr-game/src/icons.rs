@@ -1,10 +1,11 @@
-//! HUD 物品图标。内容包 PNG 按原尺寸上传，由 GPU mip 采样。
-//! 程序化兜底仍画 32×32。禁止再把高清图标压进固定图集格。
+//! HUD 物品图标。能对上正版 `Item_N.xnb` 的用那张图，其余仍是程序化色块。
+//! 文件名编号不是夹具 `ItemId`。
 
 use std::collections::HashMap;
 use std::path::Path;
 
 use spark_core::{Color, Rect};
+use spark_image::PixelImage;
 use spark_renderer::{DrawList, TextureId};
 use tr_core::ItemId;
 
@@ -21,6 +22,7 @@ pub struct IconView {
 /// 按物品索引的原尺寸图标纹理。
 pub struct IconAtlas {
     icons: HashMap<u32, TextureId>,
+    icon_uv: HashMap<u32, Rect>,
     ready: bool,
 }
 
@@ -28,6 +30,7 @@ impl IconAtlas {
     pub fn new() -> Self {
         Self {
             icons: HashMap::new(),
+            icon_uv: HashMap::new(),
             ready: false,
         }
     }
@@ -38,7 +41,14 @@ impl IconAtlas {
             return;
         }
         self.ready = true;
+        let mut from_sheet = 0u32;
         for id in ItemId::ALL.iter().copied() {
+            if let Some((tex, uv)) = sheet_icon(draw, assets, id) {
+                self.icons.insert(id.0, tex);
+                self.icon_uv.insert(id.0, uv);
+                from_sheet += 1;
+                continue;
+            }
             let tex = assets
                 .item_icon
                 .get(&id)
@@ -48,12 +58,37 @@ impl IconAtlas {
                 self.icons.insert(id.0, tex);
             }
         }
-        tracing::info!(n = self.icons.len(), "物品图标原尺寸纹理已上传");
+        tracing::info!(n = self.icons.len(), from_sheet, "物品图标已上传");
     }
 
     pub fn view(&self, item: ItemId) -> Option<IconView> {
         let tex = *self.icons.get(&item.0)?;
-        Some(IconView { tex, uv: FULL_UV })
+        let uv = self.icon_uv.get(&item.0).copied().unwrap_or(FULL_UV);
+        Some(IconView { tex, uv })
+    }
+}
+
+fn sheet_icon(
+    draw: &mut DrawList,
+    assets: &crate::content_boot::ContentAssets,
+    id: ItemId,
+) -> Option<(TextureId, Rect)> {
+    let file_id = crate::sheets::item_file(id)?;
+    let path = assets.item_sheets.get(&file_id)?;
+    let tex = crate::xnb::decode_texture_file(path).ok()?;
+    let image = PixelImage::from_rgba8(tex.width, tex.height, tex.rgba).ok()?;
+    let uv = icon_frame_uv(&image);
+    let gpu = upload_rgba(draw, image.width(), image.height(), image.into_rgba())?;
+    Some((gpu, uv))
+}
+
+fn icon_frame_uv(image: &PixelImage) -> Rect {
+    let w = image.width();
+    let h = image.height();
+    if w > 0 && h > w && h.is_multiple_of(w) {
+        Rect::new(0.0, 0.0, 1.0, w as f32 / h as f32)
+    } else {
+        FULL_UV
     }
 }
 

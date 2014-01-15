@@ -770,15 +770,10 @@ impl TerrariaApp {
         let cx = x + 40.0;
         let cy = y + 48.0;
         fill_disc(draw, cx, cy, 28.0, Color::rgb(0.12, 0.16, 0.24));
-        if let Some(tex) = self.player_atlas.tex {
-            let side = 46.0;
-            draw.tex_rect(
-                tex,
-                Rect::new(cx - side * 0.5, cy - side * 0.55, side, side),
-                Rect::new(0.0, 0.0, 1.0 / 6.0, 1.0),
-                Color::rgb(1.0, 1.0, 1.0),
-            );
-        }
+        self.player_atlas.paint_icon(
+            draw,
+            Rect::new(cx - 23.0, cy - 28.0, 46.0, 46.0),
+        );
         // 低血时头像环偏红。
         if player.hp / player.max_hp < 0.35 {
             fill_disc(draw, cx, cy, 29.0, Color::rgba(0.85, 0.2, 0.22, 0.35));

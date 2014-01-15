@@ -1047,7 +1047,7 @@ impl TerrariaApp {
             );
         }
 
-        player.draw(draw, self.cam_x, self.cam_y, self.player_atlas.tex);
+        player.draw(draw, self.cam_x, self.cam_y, &self.player_atlas);
         paint_swing_arc(draw, player, self.cam_x, self.cam_y);
         crate::grapple::draw(player, draw, self.cam_x, self.cam_y);
         for e in &self.enemies {

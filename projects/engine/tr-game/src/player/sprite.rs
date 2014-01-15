@@ -39,20 +39,74 @@ impl Player {
     }
 }
 
-/// 玩家 6 帧条带图集（idle / walk×3 / jump / fall）。
+struct PlayerLayer {
+    tex: TextureId,
+    src_h: u32,
+}
+
+/// 玩家图层。`columns == 1` 时按 `cell_h` 从贴图高度切竖直帧，否则按列切水平条。
 pub struct PlayerAtlas {
-    pub tex: Option<TextureId>,
+    layers: Vec<PlayerLayer>,
+    cell_w: u32,
+    cell_h: u32,
+    columns: u32,
+    ready: bool,
 }
 
 impl PlayerAtlas {
     pub fn new() -> Self {
-        Self { tex: None }
+        Self {
+            layers: Vec::new(),
+            cell_w: SPRITE_W as u32,
+            cell_h: SPRITE_H as u32,
+            columns: SPRITE_FRAMES as u32,
+            ready: false,
+        }
     }
 
-    pub fn ensure(&mut self, draw: &mut DrawList) {
-        if self.tex.is_some() {
+    pub fn ensure(&mut self, draw: &mut DrawList, assets: &crate::content_boot::ContentAssets) {
+        if self.ready {
             return;
         }
+        self.ready = true;
+        let mut paths: Vec<&std::path::Path> = assets
+            .player_sheets
+            .iter()
+            .map(std::path::PathBuf::as_path)
+            .filter(|p| {
+                let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                name.starts_with("Player_0_") || name == "Player_Hair_1.xnb"
+            })
+            .collect();
+        paths.sort_by_key(|p| player_layer_order(p));
+        for path in paths {
+            let Ok(tex) = crate::xnb::decode_texture_file(path) else {
+                continue;
+            };
+            if tex.width != 40 || tex.height < 56 {
+                continue;
+            }
+            match draw.create_texture(tex.width, tex.height, tex.rgba) {
+                Ok(id) => {
+                    self.cell_w = 40;
+                    self.cell_h = 56;
+                    self.columns = 1;
+                    self.layers.push(PlayerLayer {
+                        tex: id,
+                        src_h: tex.height,
+                    });
+                }
+                Err(e) => tracing::warn!(?e, "玩家图层上传失败"),
+            }
+        }
+        if self.layers.is_empty() {
+            self.upload_fallback(draw);
+        } else {
+            tracing::info!(n = self.layers.len(), "玩家图层已上传");
+        }
+    }
+
+    fn upload_fallback(&mut self, draw: &mut DrawList) {
         let w = (SPRITE_W * SPRITE_FRAMES) as u32;
         let h = SPRITE_H as u32;
         let mut rgba = vec![0u8; (w * h * 4) as usize];
@@ -74,15 +128,42 @@ impl PlayerAtlas {
                 }
             }
         }
-        match draw.create_texture(w, h, rgba) {
-            Ok(id) => self.tex = Some(id),
-            Err(e) => tracing::warn!(?e, "玩家精灵上传失败"),
+        self.cell_w = SPRITE_W as u32;
+        self.cell_h = SPRITE_H as u32;
+        self.columns = SPRITE_FRAMES as u32;
+        if let Ok(id) = draw.create_texture(w, h, rgba) {
+            self.layers.push(PlayerLayer { tex: id, src_h: h });
+        }
+    }
+
+    pub(crate) fn paint_icon(&self, draw: &mut DrawList, dest: Rect) {
+        if self.layers.is_empty() {
+            return;
+        }
+        for layer in &self.layers {
+            let uv = self.frame_uv(0, layer.src_h);
+            draw.tex_rect(layer.tex, dest, uv, Color::rgb(1.0, 1.0, 1.0));
+        }
+    }
+
+    fn frame_uv(&self, frame: u32, src_h: u32) -> Rect {
+        if self.columns <= 1 {
+            let cell = self.cell_h.max(1);
+            let rows = (src_h / cell).max(1);
+            let frame = frame % rows;
+            let h = cell as f32 / src_h.max(1) as f32;
+            Rect::new(0.0, frame as f32 * h, 1.0, h)
+        } else {
+            let cols = self.columns.max(1);
+            let frame = frame % cols;
+            let w = 1.0 / cols as f32;
+            Rect::new(frame as f32 * w, 0.0, w, 1.0)
         }
     }
 }
 
 impl Player {
-    pub fn draw(&self, draw: &mut DrawList, cam_x: f32, cam_y: f32, tex: Option<TextureId>) {
+    pub fn draw(&self, draw: &mut DrawList, cam_x: f32, cam_y: f32, atlas: &PlayerAtlas) {
         let facing_right = self.facing >= 0.0;
         let walk_frame = match self.anim_state() {
             PlayerAnim::Idle => 0,
@@ -91,8 +172,9 @@ impl Player {
             PlayerAnim::Fall => 5,
         };
 
-        let sprite_w = SPRITE_W as f32 * SPRITE_SCALE;
-        let sprite_h = SPRITE_H as f32 * SPRITE_SCALE;
+        let scale = TILE / 16.0;
+        let sprite_w = atlas.cell_w as f32 * scale;
+        let sprite_h = atlas.cell_h as f32 * scale;
         // 回环：把碰撞盒左缘解到相机附近的周期像再画
         let px = cam_x + wrap_delta_x(cam_x, self.x);
         let origin_x = px + HIT_W * 0.5 - sprite_w * 0.5 - cam_x;
@@ -114,15 +196,16 @@ impl Player {
             Color::rgb(1.0, 1.0, 1.0)
         };
 
-        if let Some(tex) = tex {
-            let u0 = walk_frame as f32 / SPRITE_FRAMES as f32;
-            let uw = 1.0 / SPRITE_FRAMES as f32;
-            let uv = if facing_right {
-                Rect::new(u0, 0.0, uw, 1.0)
-            } else {
-                Rect::new(u0 + uw, 0.0, -uw, 1.0)
-            };
-            draw.tex_rect(tex, dest, uv, hurt_tint);
+        if !atlas.layers.is_empty() {
+            let frame = walk_frame.max(0) as u32;
+            for layer in &atlas.layers {
+                let mut uv = atlas.frame_uv(frame, layer.src_h);
+                if !facing_right {
+                    uv.x += uv.w;
+                    uv.w = -uv.w;
+                }
+                draw.tex_rect(layer.tex, dest, uv, hurt_tint);
+            }
             return;
         }
 
@@ -468,4 +551,15 @@ fn put(m: &mut [[u8; SPRITE_W]; SPRITE_H], cells: &[(usize, usize, u8)]) {
             m[y][x] = c;
         }
     }
+}
+
+fn player_layer_order(path: &std::path::Path) -> u32 {
+    let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    if name.starts_with("Player_Hair_") {
+        return 10_000;
+    }
+    name.strip_prefix("Player_0_")
+        .and_then(|s| s.strip_suffix(".xnb"))
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(9_000)
 }

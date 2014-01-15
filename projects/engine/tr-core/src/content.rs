@@ -397,7 +397,7 @@ pub fn item_def(id: ItemId) -> ItemDef {
     content().item_or_unknown(id)
 }
 
-/// 过渡期硬编码方块表。不是 mod 加载器，启动不会调用。
+/// 过渡期硬编码方块表。不是正版编号，也不是 mod 加载器。
 pub fn install_builtin_fixture() {
     if is_installed() {
         return;

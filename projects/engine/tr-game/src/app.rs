@@ -6,6 +6,7 @@ use spark_renderer::{DrawList, FrameCtx, GameHost};
 use tr_core::{ItemId, RaceId};
 
 use crate::content_boot::ContentAssets;
+use crate::proof::ProofGpu;
 use crate::enemy::{Enemy, spawn_surface_slimes};
 use crate::fx::{DamageFloater, DustParticle};
 use crate::icons::IconAtlas;
@@ -84,8 +85,10 @@ pub struct TerrariaApp {
     pub(crate) damage_fx: Vec<DamageFloater>,
     /// 落地 / 挖掘尘粒。
     pub(crate) dust_fx: Vec<DustParticle>,
-    /// 内容包解析出的 PNG 路径。
+    /// 内容包解析出的路径与正版证明贴图。
     pub(crate) content_assets: ContentAssets,
+    /// 正版 XNB 对照条的 GPU 纹理。
+    pub(crate) proof_gpu: ProofGpu,
     /// 鼠标拖着的物品堆（背包/箱子光标）。
     pub(crate) cursor_stack: Option<ItemStack>,
 }
@@ -132,6 +135,7 @@ impl TerrariaApp {
             damage_fx: Vec::new(),
             dust_fx: Vec::new(),
             content_assets: ContentAssets::empty(),
+            proof_gpu: ProofGpu::new(),
             cursor_stack: None,
         }
     }
@@ -216,21 +220,27 @@ impl GameHost for TerrariaApp {
                 self.icon_atlas.ensure(draw, &self.content_assets);
                 self.tile_atlas.ensure(draw, &self.content_assets);
                 self.sky_atlas.ensure(draw, &self.content_assets);
-                self.player_atlas.ensure(draw);
+                self.player_atlas.ensure(draw, &self.content_assets);
                 draw.begin_world();
                 self.draw_world(draw);
                 draw.begin_hud();
                 self.paint_hud(draw);
+                if self.debug_hud {
+                    self.paint_boot_frames(draw);
+                }
             }
             Screen::Pause => {
                 self.icon_atlas.ensure(draw, &self.content_assets);
                 self.tile_atlas.ensure(draw, &self.content_assets);
                 self.sky_atlas.ensure(draw, &self.content_assets);
-                self.player_atlas.ensure(draw);
+                self.player_atlas.ensure(draw, &self.content_assets);
                 draw.begin_world();
                 self.draw_world(draw);
                 draw.begin_hud();
                 self.paint_pause(draw);
+                if self.debug_hud {
+                    self.paint_boot_frames(draw);
+                }
             }
         }
     }

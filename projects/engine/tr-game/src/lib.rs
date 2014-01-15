@@ -1,18 +1,22 @@
 #![warn(missing_docs)]
 //! Terraria 游戏逻辑库。
 //!
-//! **禁止** `cargo run` / 独立 `main` 启动。唯一产品入口是 npm CLI：
+//! **禁止** `cargo run` / 独立 `main` 启动。产品入口是 npm CLI：
 //!
 //! ```text
 //! terraria emulate --path <原版 Terraria 安装目录>
+//! terraria unpack --path <安装根> --out <目录>
+//! terraria extract --path <安装根> --out <目录>
 //! ```
 //!
+//! 窗口只由 `emulate` 打开。`unpack` / `extract` 不启动游戏。
 //! 由 `@game-gpt/terraria` → `tr-napi` → 本库。
 
 mod aim;
 mod app;
 mod container;
 mod content_boot;
+mod content_export;
 mod craft;
 mod demo;
 mod enemy;
@@ -22,11 +26,13 @@ mod hud;
 mod icons;
 mod lightmap;
 mod objective;
+mod sheets;
 mod palette;
 mod play;
 mod player;
 mod portal;
 mod postprocess;
+mod proof;
 mod save;
 mod screens;
 mod sfx;
@@ -37,6 +43,7 @@ mod use_item;
 mod weapon;
 mod world;
 mod world_view;
+mod xnb;
 
 use std::path::{Path, PathBuf};
 
@@ -45,6 +52,7 @@ use spark_renderer::WindowConfig;
 
 use crate::app::TerrariaApp;
 pub use crate::content_boot::{MOD_LOAD_STATUS, ModLoad, load_original_mods};
+pub use crate::content_export::{extract_content, unpack_content};
 
 /// `terraria emulate --path` 的运行参数。
 #[derive(Debug, Clone)]
@@ -111,7 +119,7 @@ pub fn run_emulate(opts: EmulateOptions) -> Result<(), String> {
         "terraria emulate：正版路径已确认"
     );
 
-    let assets = crate::content_boot::boot_content(&opts.original_path);
+    let assets = crate::content_boot::boot_content(&opts.original_path)?;
     let mut host = TerrariaApp::new();
     host.content_assets = assets;
     if opts.boot_play {

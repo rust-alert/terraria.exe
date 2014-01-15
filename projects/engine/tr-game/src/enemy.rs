@@ -202,7 +202,7 @@ impl Enemy {
             let tint = if flash {
                 Color::rgb(1.0, 0.72, 0.88)
             } else {
-                Color::rgb(1.0, 1.0, 1.0)
+                self.kind.body()
             };
             draw.tex_rect(view.tex, dest, view.uv, tint);
         } else {

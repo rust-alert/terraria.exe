@@ -35,6 +35,9 @@ impl SkyAtlas {
             return;
         }
         self.ready = true;
+        if let Some(layer) = upload_xnb_layer(draw, assets.forest_background.as_deref()) {
+            self.backdrop = Some(layer);
+        }
         self.backdrop = upload_layer(draw, assets.sky_backdrop.as_deref());
         self.stars = upload_layer(draw, assets.sky_stars.as_deref());
         self.body = upload_layer(draw, assets.sky_body.as_deref());
@@ -70,6 +73,22 @@ impl SkyAtlas {
             BiomeId::Tundra => 3,
         };
         self.hills[i]
+    }
+}
+
+fn upload_xnb_layer(draw: &mut DrawList, path: Option<&std::path::Path>) -> Option<SkyLayer> {
+    let path = path?;
+    let tex = crate::xnb::decode_texture_file(path).ok()?;
+    match draw.create_texture(tex.width, tex.height, tex.rgba) {
+        Ok(gpu) => Some(SkyLayer {
+            tex: gpu,
+            w: tex.width,
+            h: tex.height,
+        }),
+        Err(e) => {
+            tracing::warn!(?e, path = %path.display(), "天空 XNB 上传失败");
+            None
+        }
     }
 }
 

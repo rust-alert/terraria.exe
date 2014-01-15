@@ -1,10 +1,11 @@
-//! 世界瓦片纹理。内容包 PNG 按原尺寸上传，由 GPU mip 采样。
-//! 程序化兜底画成独立小纹理。禁止在 CPU 上把高清源压成固定 32×32 图集格。
+//! 夹具方块纹理。正版图集不按夹具 ID 取号。
+//! 泥土画面单独用 `Tiles_0` 的第一格，格子大小由像素边长决定。
 
 use std::collections::HashMap;
 use std::path::Path;
 
 use spark_core::{Color, Rect};
+use spark_image::PixelImage;
 use spark_renderer::{DrawList, TextureId};
 use tr_core::{BlockId, WallId};
 
@@ -23,11 +24,14 @@ pub struct TileView {
 /// 按方块 / 墙 / 特效用途索引的原尺寸纹理集。
 pub struct TileAtlas {
     blocks: HashMap<u32, TextureId>,
+    /// 不为整张 `[0,1]²` 的采样，例如正版图集第一格。
+    block_uv: HashMap<u32, Rect>,
     walls: HashMap<u8, TextureId>,
     halo: Option<TextureId>,
     white: Option<TextureId>,
     crack: Option<TextureId>,
     slime: Option<TextureId>,
+    slime_uv: Rect,
     ready: bool,
 }
 
@@ -35,11 +39,13 @@ impl TileAtlas {
     pub fn new() -> Self {
         Self {
             blocks: HashMap::new(),
+            block_uv: HashMap::new(),
             walls: HashMap::new(),
             halo: None,
             white: None,
             crack: None,
             slime: None,
+            slime_uv: FULL_UV,
             ready: false,
         }
     }
@@ -49,6 +55,7 @@ impl TileAtlas {
             return;
         }
         self.ready = true;
+        let sheets = self.upload_sheets(draw, assets);
 
         for id in [
             BlockId::DIRT,
@@ -74,11 +81,15 @@ impl TileAtlas {
             BlockId::BED,
             BlockId::WATER,
         ] {
-            let tex = assets
-                .block_side
-                .get(&id)
-                .and_then(|p| upload_png(draw, p))
-                .or_else(|| upload_fallback_block(draw, id));
+            let tex = if self.blocks.contains_key(&id.0) {
+                None
+            } else {
+                assets
+                    .block_side
+                    .get(&id)
+                    .and_then(|p| upload_png(draw, p))
+                    .or_else(|| upload_fallback_block(draw, id))
+            };
             if let Some(tex) = tex {
                 self.blocks.insert(id.0, tex);
             }
@@ -107,19 +118,91 @@ impl TileAtlas {
             FALLBACK_CELL,
             solid_cell(Color::rgb(1.0, 1.0, 1.0)),
         );
-        self.slime = upload_rgba(draw, FALLBACK_CELL, FALLBACK_CELL, paint_slime_rgba());
+        self.slime = self
+            .slime
+            .or_else(|| upload_rgba(draw, FALLBACK_CELL, FALLBACK_CELL, paint_slime_rgba()));
 
         tracing::info!(
             blocks = self.blocks.len(),
+            sheets,
             walls = self.walls.len(),
-            "瓦片原尺寸纹理已上传（无 CPU 降采样图集）"
+            "瓦片纹理已上传"
         );
+    }
+
+    fn upload_sheets(
+        &mut self,
+        draw: &mut DrawList,
+        assets: &crate::content_boot::ContentAssets,
+    ) -> u32 {
+        let mut n = 0u32;
+        for id in [
+            BlockId::DIRT,
+            BlockId::GRASS,
+            BlockId::STONE,
+            BlockId::WOOD,
+            BlockId::LEAF,
+            BlockId::WORKBENCH,
+            BlockId::SAPLING,
+            BlockId::TORCH,
+            BlockId::PLATFORM,
+            BlockId::CHEST,
+            BlockId::LADDER,
+            BlockId::ROPE,
+            BlockId::SAND,
+            BlockId::SNOW,
+            BlockId::COPPER_ORE,
+            BlockId::IRON_ORE,
+            BlockId::FURNACE,
+            BlockId::BED,
+        ] {
+            let Some(file_id) = crate::sheets::tile_file(id) else {
+                continue;
+            };
+            let Some(path) = assets.tile_sheets.get(&file_id) else {
+                continue;
+            };
+            let Ok(tex) = crate::xnb::decode_texture_file(path) else {
+                tracing::warn!(file = file_id, "正版方块图集解码失败");
+                continue;
+            };
+            let Ok(image) = PixelImage::from_rgba8(tex.width, tex.height, tex.rgba) else {
+                continue;
+            };
+            let Some(uv) = best_cell_uv(&image, id == BlockId::GRASS) else {
+                tracing::info!(
+                    file = file_id,
+                    w = image.width(),
+                    h = image.height(),
+                    "方块图集切不出第一格，这块仍用程序化色块"
+                );
+                continue;
+            };
+            let Some(gpu) = upload_rgba(draw, image.width(), image.height(), image.into_rgba())
+            else {
+                continue;
+            };
+            self.blocks.insert(id.0, gpu);
+            self.block_uv.insert(id.0, uv);
+            n += 1;
+        }
+        if let Some(path) = assets
+            .npc_sheets
+            .get(&crate::sheets::SLIME_NPC_FILE)
+        {
+            if let Some((gpu, uv)) = upload_slime_frame(draw, path) {
+                self.slime = Some(gpu);
+                self.slime_uv = uv;
+            }
+        }
+        n
     }
 
     pub fn block(&self, id: BlockId) -> Option<TileView> {
         // 水图集供装饰采样。世界水体仍按水位矩形绘制。
         let tex = *self.blocks.get(&id.0)?;
-        Some(TileView { tex, uv: FULL_UV })
+        let uv = self.block_uv.get(&id.0).copied().unwrap_or(FULL_UV);
+        Some(TileView { tex, uv })
     }
 
     pub fn wall(&self, id: WallId) -> Option<TileView> {
@@ -151,8 +234,105 @@ impl TileAtlas {
     pub fn slime(&self) -> Option<TileView> {
         Some(TileView {
             tex: self.slime?,
-            uv: FULL_UV,
+            uv: self.slime_uv,
         })
+    }
+}
+
+fn upload_slime_frame(draw: &mut DrawList, path: &Path) -> Option<(TextureId, Rect)> {
+    let tex = crate::xnb::decode_texture_file(path).ok()?;
+    let image = PixelImage::from_rgba8(tex.width, tex.height, tex.rgba).ok()?;
+    let uv = if image.height() >= image.width() * 2 && image.height() % 2 == 0 {
+        Rect::new(0.0, 0.5, 1.0, 0.5)
+    } else {
+        FULL_UV
+    };
+    let gpu = upload_rgba(draw, image.width(), image.height(), image.into_rgba())?;
+    Some((gpu, uv))
+}
+
+fn best_cell_uv(image: &PixelImage, grass: bool) -> Option<Rect> {
+    let w = image.width();
+    let h = image.height();
+    let stride = if w >= 18 && h >= 18 && w % 18 == 0 && h % 18 == 0 {
+        18
+    } else if w >= 16 && h >= 16 && w % 16 == 0 && h % 16 == 0 {
+        16
+    } else {
+        return None;
+    };
+    let cell = 16u32.min(stride);
+    let cols = w / stride;
+    let rows = (h / stride).min(if grass { 40 } else { 12 });
+    let mut best_score = i32::MIN;
+    let mut best = None;
+    for row in 0..rows {
+        for col in 0..cols {
+            let x0 = col * stride;
+            let y0 = row * stride;
+            let Some(score) = score_cell(image, x0, y0, cell, grass) else {
+                continue;
+            };
+            if score > best_score {
+                best_score = score;
+                best = Some((x0, y0));
+            }
+        }
+    }
+    let (x0, y0) = best?;
+    let sprite = spark_image::Sprite::new(Rect::new(x0 as f32, y0 as f32, cell as f32, cell as f32));
+    sprite.uv(image).ok()
+}
+
+fn score_cell(image: &PixelImage, x0: u32, y0: u32, cell: u32, grass: bool) -> Option<i32> {
+    let mut opaque = 0i32;
+    let mut edge = 0i32;
+    let mut samples = 0i32;
+    let mut green_top = 0i32;
+    let mut green_bot = 0i32;
+    let mid = cell / 2;
+    let inner = image.pixel(x0 + mid, y0 + mid).ok()?;
+    for y in 0..cell {
+        for x in 0..cell {
+            let px = image.pixel(x0 + x, y0 + y).ok()?;
+            if px[3] < 32 {
+                continue;
+            }
+            opaque += 1;
+            if grass {
+                let hi = (px[0] as i32).max(px[2] as i32);
+                let g = px[1] as i32 - hi;
+                if y < 6 {
+                    green_top += g;
+                } else if y + 6 >= cell {
+                    green_bot += g;
+                }
+            }
+            let border = x < 2 || y < 2 || x + 2 >= cell || y + 2 >= cell;
+            if border {
+                edge += (px[0] as i32 - inner[0] as i32).abs()
+                    + (px[1] as i32 - inner[1] as i32).abs()
+                    + (px[2] as i32 - inner[2] as i32).abs();
+                samples += 1;
+            }
+        }
+    }
+    if opaque < 24 {
+        return None;
+    }
+    let mean_edge = if samples > 0 { edge / samples } else { 0 };
+    let full = (cell as i32) * (cell as i32) - 4;
+    if grass {
+        let cap = green_top - green_bot;
+        if cap < 40 {
+            return None;
+        }
+        return Some(cap + opaque);
+    }
+    if opaque >= full {
+        Some(20_000 - mean_edge)
+    } else {
+        Some(opaque - mean_edge)
     }
 }
 

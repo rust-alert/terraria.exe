@@ -9,7 +9,8 @@ use tr_core::{BiomeId, BlockId, FluidLevel, ItemId, WallId, biome_at};
 
 pub const WORLD_W: i32 = 160;
 pub const WORLD_H: i32 = 72;
-pub const TILE: f32 = 20.0;
+/// 一格 32 屏像素，对应正版 16 像素块的 2 倍。不能用 20，否则原图会被拉变形。
+pub const TILE: f32 = 32.0;
 
 /// 世界宽度（世界单位）。
 pub fn world_pixel_w() -> f32 {
