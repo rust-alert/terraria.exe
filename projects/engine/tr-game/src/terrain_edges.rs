@@ -39,7 +39,6 @@ fn is_terrain(id: BlockId) -> bool {
         BlockId::DIRT
             | BlockId::GRASS
             | BlockId::STONE
-            | BlockId::SCRAP
             | BlockId::SAND
             | BlockId::SNOW
             | BlockId::COPPER_ORE
@@ -51,7 +50,7 @@ fn is_terrain(id: BlockId) -> bool {
 fn is_stoneish(id: BlockId) -> bool {
     matches!(
         id,
-        BlockId::STONE | BlockId::COPPER_ORE | BlockId::IRON_ORE | BlockId::SCRAP
+        BlockId::STONE | BlockId::COPPER_ORE | BlockId::IRON_ORE
     )
 }
 

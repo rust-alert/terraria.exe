@@ -15,7 +15,7 @@ use tr_core::{BlockId, DamageHit, ItemId, ResistProfile, resolve_damage};
 use crate::craft::{CraftStation, RECIPES};
 use crate::grapple::Grapple;
 use crate::world::{
-    TILE, WORLD_H, World, tile_x_near, world_pixel_w, wrap_delta_x, wrap_tx, wrap_xf,
+    TILE, WORLD_H, World, tile_x_near, world_pixel_w, wrap_delta_x, wrap_tx,
 };
 
 pub const HIT_W: f32 = TILE * (20.0 / 16.0);
@@ -246,7 +246,8 @@ impl Player {
         self.x += dx;
         self.y += dy;
         if dx != 0.0 {
-            self.x = wrap_xf(self.x);
+            // 有限边界：钳在地图内，不再回环。
+            self.x = self.x.clamp(0.0, world_pixel_w() - HIT_W);
         }
         if dy != 0.0 {
             // 水平步进不清落地标志；竖直步进时重算
@@ -254,12 +255,7 @@ impl Player {
         }
 
         let min_tx = (self.x / TILE).floor() as i32;
-        let span = if self.x + HIT_W > world_pixel_w() {
-            ((self.x + HIT_W - world_pixel_w()) / TILE).floor() as i32 + 1
-        } else {
-            0
-        };
-        let max_tx = ((self.x + HIT_W) / TILE).floor() as i32 + span;
+        let max_tx = ((self.x + HIT_W) / TILE).floor() as i32;
         let min_ty = (self.y / TILE).floor() as i32;
         let max_ty = ((self.y + HIT_H) / TILE).floor() as i32;
 
@@ -295,10 +291,10 @@ impl Player {
                         self.y = old_y;
                     }
                     if dx > 0.0 {
-                        self.x = wrap_xf(bx - HIT_W);
+                        self.x = (bx - HIT_W).clamp(0.0, world_pixel_w() - HIT_W);
                         self.vx = 0.0;
                     } else {
-                        self.x = wrap_xf(bx + TILE);
+                        self.x = (bx + TILE).clamp(0.0, world_pixel_w() - HIT_W);
                         self.vx = 0.0;
                     }
                 }
@@ -346,12 +342,7 @@ impl Player {
     /// 身体重叠检测：平台不挡身体（只挡自上而下的脚，见 `move_axis`）。
     fn hitbox_blocked(world: &World, x: f32, y: f32) -> bool {
         let min_tx = (x / TILE).floor() as i32;
-        let span = if x + HIT_W > world_pixel_w() {
-            ((x + HIT_W - world_pixel_w()) / TILE).floor() as i32 + 1
-        } else {
-            0
-        };
-        let max_tx = ((x + HIT_W) / TILE).floor() as i32 + span;
+        let max_tx = ((x + HIT_W) / TILE).floor() as i32;
         let min_ty = (y / TILE).floor() as i32;
         let max_ty = ((y + HIT_H) / TILE).floor() as i32;
         for ty in min_ty..=max_ty {
@@ -394,10 +385,6 @@ impl Player {
         }
         let id = world.get(tx, ty);
         if !id.mineable() {
-            if id == BlockId::POD {
-                self.swing_cd = SWING_INTERVAL;
-                return Some("逃生舱太硬了".into());
-            }
             // 前景可透视且有墙 → 挖墙
             if Self::can_mine_wall_through(id) && world.get_wall(tx, ty).mineable() {
                 return self.dig_wall(world, tx, ty);
@@ -637,14 +624,14 @@ impl Player {
         Some(block.label())
     }
 
-    /// 中键铺背景墙（泥土/石头）。
+    /// 右键铺背景墙（泥土/石头/木材，或专用墙物品）。
     pub fn try_place_wall(&mut self, world: &mut World, tx: i32, ty: i32) -> Option<String> {
         if !world.in_bounds(tx, ty) {
             return None;
         }
         let item = self.selected_item();
         let Some(wall) = item.as_wall() else {
-            return Some("手持泥土/石头/木材可铺墙".into());
+            return Some("手持木墙/石墙，或泥土/石头/木材右键铺墙".into());
         };
         if self.inv.get(item) == 0 {
             return Some("没有材料".into());
@@ -661,7 +648,7 @@ impl Player {
         }
         let _ = self.inv.try_take(item, 1);
         world.set_wall(tx, ty, wall);
-        Some(wall.label())
+        Some(format!("{}（背景墙）", wall.label()))
     }
 
     /// F：食用当前选中食物。
@@ -721,18 +708,6 @@ impl Player {
         }
     }
 
-    pub fn interact_pod(&self, world: &World) -> Option<&'static str> {
-        let tx = wrap_tx(((self.x + HIT_W * 0.5) / TILE).floor() as i32);
-        let ty = ((self.y + HIT_H * 0.5) / TILE).floor() as i32;
-        for dy in -2..=2 {
-            for dx in -2..=2 {
-                if world.get(tx + dx, ty + dy) == BlockId::POD {
-                    return Some("逃生舱：白日按 E 余温，入夜按 E 休息。");
-                }
-            }
-        }
-        None
-    }
 }
 
 fn aabb_overlap(ax: f32, ay: f32, aw: f32, ah: f32, bx: f32, by: f32, bw: f32, bh: f32) -> bool {

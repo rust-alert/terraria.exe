@@ -1,5 +1,5 @@
 //! 夹具方块纹理。正版图集不按夹具 ID 取号。
-//! 泥土画面单独用 `Tiles_0` 的第一格，格子大小由像素边长决定。
+//! 地形块按邻接 framing 从 `Tiles_N` 采样 16 像素格（步长 18）。
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -8,6 +8,9 @@ use spark_core::{Color, Rect};
 use spark_image::PixelImage;
 use spark_renderer::{DrawList, TextureId};
 use tr_core::{BlockId, WallId};
+
+use crate::tile_frame::{self, CELL};
+use crate::world::World;
 
 /// 仅无 PNG 时的程序化兜底边长。
 const FALLBACK_CELL: u32 = 32;
@@ -21,12 +24,25 @@ pub struct TileView {
     pub uv: Rect,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SheetMeta {
+    tex: TextureId,
+    w: u32,
+    h: u32,
+    /// 无法 framing 时的兜底 UV（满连接中心格）。
+    fallback_uv: Rect,
+}
+
 /// 按方块 / 墙 / 特效用途索引的原尺寸纹理集。
 pub struct TileAtlas {
     blocks: HashMap<u32, TextureId>,
-    /// 不为整张 `[0,1]²` 的采样，例如正版图集第一格。
+    /// 正版图集元数据（可 framing）。
+    sheets: HashMap<u32, SheetMeta>,
+    /// 不为整张 `[0,1]²` 的采样，例如家具第一格。
     block_uv: HashMap<u32, Rect>,
     walls: HashMap<u8, TextureId>,
+    /// 正版墙图集（可 framing）。
+    wall_sheets: HashMap<u8, SheetMeta>,
     halo: Option<TextureId>,
     white: Option<TextureId>,
     crack: Option<TextureId>,
@@ -39,8 +55,10 @@ impl TileAtlas {
     pub fn new() -> Self {
         Self {
             blocks: HashMap::new(),
+            sheets: HashMap::new(),
             block_uv: HashMap::new(),
             walls: HashMap::new(),
+            wall_sheets: HashMap::new(),
             halo: None,
             white: None,
             crack: None,
@@ -56,18 +74,16 @@ impl TileAtlas {
         }
         self.ready = true;
         let sheets = self.upload_sheets(draw, assets);
+        let wall_n = self.upload_wall_sheets(draw, assets);
 
         for id in [
             BlockId::DIRT,
             BlockId::GRASS,
             BlockId::STONE,
-            BlockId::SCRAP,
-            BlockId::POD,
             BlockId::WOOD,
             BlockId::LEAF,
             BlockId::WORKBENCH,
             BlockId::SAPLING,
-            BlockId::WARP,
             BlockId::TORCH,
             BlockId::PLATFORM,
             BlockId::CHEST,
@@ -100,6 +116,9 @@ impl TileAtlas {
             (WallId::STONE, Color::rgb(0.24, 0.26, 0.30)),
             (WallId::WOOD, Color::rgb(0.38, 0.26, 0.14)),
         ] {
+            if self.wall_sheets.contains_key(&wall.0) || self.walls.contains_key(&wall.0) {
+                continue;
+            }
             let tex = assets
                 .wall_tex
                 .get(&wall)
@@ -125,7 +144,9 @@ impl TileAtlas {
         tracing::info!(
             blocks = self.blocks.len(),
             sheets,
-            walls = self.walls.len(),
+            framed = self.sheets.len(),
+            walls = self.walls.len() + self.wall_sheets.len(),
+            wall_sheets = wall_n,
             "瓦片纹理已上传"
         );
     }
@@ -169,21 +190,40 @@ impl TileAtlas {
             let Ok(image) = PixelImage::from_rgba8(tex.width, tex.height, tex.rgba) else {
                 continue;
             };
-            let Some(uv) = best_cell_uv(&image, id == BlockId::GRASS) else {
-                tracing::info!(
-                    file = file_id,
-                    w = image.width(),
-                    h = image.height(),
-                    "方块图集切不出第一格，这块仍用程序化色块"
-                );
-                continue;
+            let w = image.width();
+            let h = image.height();
+            let framed = is_framed_terrain(id) && w >= CELL && h >= CELL;
+            let fallback_uv = if framed {
+                tile_frame::frame_to_uv(18, 18, w, h).unwrap_or(FULL_UV)
+            } else {
+                let Some(uv) = best_cell_uv(&image, id == BlockId::GRASS) else {
+                    tracing::info!(
+                        file = file_id,
+                        w,
+                        h,
+                        "方块图集切不出第一格，这块仍用程序化色块"
+                    );
+                    continue;
+                };
+                uv
             };
-            let Some(gpu) = upload_rgba(draw, image.width(), image.height(), image.into_rgba())
-            else {
+            let Some(gpu) = upload_rgba(draw, w, h, image.into_rgba()) else {
                 continue;
             };
             self.blocks.insert(id.0, gpu);
-            self.block_uv.insert(id.0, uv);
+            if framed {
+                self.sheets.insert(
+                    id.0,
+                    SheetMeta {
+                        tex: gpu,
+                        w,
+                        h,
+                        fallback_uv,
+                    },
+                );
+            } else {
+                self.block_uv.insert(id.0, fallback_uv);
+            }
             n += 1;
         }
         if let Some(path) = assets
@@ -198,16 +238,105 @@ impl TileAtlas {
         n
     }
 
+    fn upload_wall_sheets(
+        &mut self,
+        draw: &mut DrawList,
+        assets: &crate::content_boot::ContentAssets,
+    ) -> u32 {
+        let mut n = 0u32;
+        for id in [WallId::DIRT, WallId::STONE, WallId::WOOD] {
+            let Some(file_id) = crate::sheets::wall_file(id) else {
+                continue;
+            };
+            let Some(path) = assets.wall_sheets.get(&file_id) else {
+                continue;
+            };
+            let Ok(tex) = crate::xnb::decode_texture_file(path) else {
+                tracing::warn!(file = file_id, "正版墙图集解码失败");
+                continue;
+            };
+            let Ok(image) = PixelImage::from_rgba8(tex.width, tex.height, tex.rgba) else {
+                continue;
+            };
+            let w = image.width();
+            let h = image.height();
+            if w < CELL || h < CELL {
+                continue;
+            }
+            let fallback_uv = tile_frame::frame_to_uv(18, 18, w, h).unwrap_or(FULL_UV);
+            let Some(gpu) = upload_rgba(draw, w, h, image.into_rgba()) else {
+                continue;
+            };
+            self.walls.insert(id.0, gpu);
+            self.wall_sheets.insert(
+                id.0,
+                SheetMeta {
+                    tex: gpu,
+                    w,
+                    h,
+                    fallback_uv,
+                },
+            );
+            n += 1;
+        }
+        n
+    }
+
+    /// 静态采样（家具等）。地形请用 [`Self::block_framed`]。
     pub fn block(&self, id: BlockId) -> Option<TileView> {
-        // 水图集供装饰采样。世界水体仍按水位矩形绘制。
+        if let Some(meta) = self.sheets.get(&id.0) {
+            return Some(TileView {
+                tex: meta.tex,
+                uv: meta.fallback_uv,
+            });
+        }
         let tex = *self.blocks.get(&id.0)?;
         let uv = self.block_uv.get(&id.0).copied().unwrap_or(FULL_UV);
         Some(TileView { tex, uv })
     }
 
+    /// 按邻接 framing 采样正版图集。
+    pub fn block_framed(&self, world: &World, tx: i32, ty: i32) -> Option<TileView> {
+        let id = world.get(tx, ty);
+        if let Some(meta) = self.sheets.get(&id.0) {
+            let uv = tile_frame::frame_uv_px(world, tx, ty)
+                .and_then(|(u, v)| tile_frame::frame_to_uv(u, v, meta.w, meta.h))
+                .unwrap_or(meta.fallback_uv);
+            return Some(TileView {
+                tex: meta.tex,
+                uv,
+            });
+        }
+        self.block(id)
+    }
+
     pub fn wall(&self, id: WallId) -> Option<TileView> {
+        if let Some(meta) = self.wall_sheets.get(&id.0) {
+            return Some(TileView {
+                tex: meta.tex,
+                uv: meta.fallback_uv,
+            });
+        }
         let tex = *self.walls.get(&id.0)?;
         Some(TileView { tex, uv: FULL_UV })
+    }
+
+    /// 按邻接 framing 采样正版墙图集。
+    pub fn wall_framed(&self, world: &World, tx: i32, ty: i32) -> Option<TileView> {
+        let id = world.get_wall(tx, ty);
+        if id == WallId::NONE {
+            return None;
+        }
+        if let Some(meta) = self.wall_sheets.get(&id.0) {
+            let uv = tile_frame::wall_frame_uv_px(world, tx, ty)
+                .and_then(|(u, v)| tile_frame::frame_to_uv(u, v, meta.w, meta.h))
+                .unwrap_or(meta.fallback_uv);
+            return Some(TileView {
+                tex: meta.tex,
+                uv,
+            });
+        }
+        self.wall(id)
     }
 
     pub fn halo(&self) -> Option<TileView> {
@@ -249,6 +378,19 @@ fn upload_slime_frame(draw: &mut DrawList, path: &Path) -> Option<(TextureId, Re
     };
     let gpu = upload_rgba(draw, image.width(), image.height(), image.into_rgba())?;
     Some((gpu, uv))
+}
+
+fn is_framed_terrain(id: BlockId) -> bool {
+    matches!(
+        id,
+        BlockId::DIRT
+            | BlockId::GRASS
+            | BlockId::STONE
+            | BlockId::SAND
+            | BlockId::SNOW
+            | BlockId::COPPER_ORE
+            | BlockId::IRON_ORE
+    )
 }
 
 fn best_cell_uv(image: &PixelImage, grass: bool) -> Option<Rect> {
@@ -699,22 +841,6 @@ fn pixel_for(id: BlockId, x: u32, y: u32) -> Color {
         BlockId::IRON_ORE => pixel_ore(x, y, IRON, 7),
         BlockId::WOOD => pixel_wood(x, y),
         BlockId::LEAF => pixel_leaf(x, y),
-        BlockId::SCRAP => {
-            if n > 0.78 {
-                Color::rgb(0.95, 0.82, 0.35)
-            } else {
-                mix(
-                    Color::rgb(0.62, 0.48, 0.28),
-                    Color::rgb(0.40, 0.32, 0.22),
-                    n,
-                )
-            }
-        }
-        BlockId::POD => mix(
-            Color::rgb(0.32, 0.52, 0.68),
-            Color::rgb(0.55, 0.82, 0.95),
-            n * 0.6,
-        ),
         BlockId::WORKBENCH => {
             if y < 3 {
                 Color::rgb(0.78, 0.55, 0.28)
@@ -733,14 +859,6 @@ fn pixel_for(id: BlockId, x: u32, y: u32) -> Color {
                 Color::rgb(0.32, 0.72, 0.28)
             } else {
                 Color::rgba(0.0, 0.0, 0.0, 0.0)
-            }
-        }
-        BlockId::WARP => {
-            let d = (x as f32 - 7.5).hypot(y as f32 - 7.5);
-            if d < 6.2 {
-                mix(Color::rgb(0.45, 0.18, 0.72), Color::rgb(0.85, 0.55, 1.0), n)
-            } else {
-                Color::rgba(0.35, 0.12, 0.55, 0.35)
             }
         }
         BlockId::TORCH => {

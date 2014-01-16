@@ -45,6 +45,13 @@ pub fn primary_use(
         return player.try_eat().map(PrimaryOutcome::Eat);
     }
 
+    // 专用墙物品：左键直接铺背景墙（对齐原版墙材手感）。
+    if pressed && sel.as_wall().is_some() && sel.as_block().is_none() {
+        return player
+            .try_place_wall(world, tx, ty)
+            .map(|msg| PrimaryOutcome::Place { msg, tx, ty });
+    }
+
     // 可放置方块 / 树苗：按下沿放置。
     if pressed && (sel.as_block().is_some() || sel == ItemId::SAPLING) {
         return player

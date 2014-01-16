@@ -69,6 +69,22 @@ pub const RECIPES: &[Recipe] = &[
         label: "木平台 ×2",
     },
     Recipe {
+        id: "wood_wall",
+        station: CraftStation::Workbench,
+        inputs: &[(ItemId::WOOD, 1)],
+        output: ItemId::WOOD_WALL,
+        output_count: 4,
+        label: "木墙 ×4",
+    },
+    Recipe {
+        id: "stone_wall",
+        station: CraftStation::Workbench,
+        inputs: &[(ItemId::STONE, 1)],
+        output: ItemId::STONE_WALL,
+        output_count: 4,
+        label: "石墙 ×4",
+    },
+    Recipe {
         id: "chest",
         station: CraftStation::Workbench,
         inputs: &[(ItemId::WOOD, 8)],
@@ -109,17 +125,9 @@ pub const RECIPES: &[Recipe] = &[
         label: "木甲 ×1",
     },
     Recipe {
-        id: "warp_anchor",
-        station: CraftStation::Workbench,
-        inputs: &[(ItemId::SCRAP, 8), (ItemId::STONE, 12), (ItemId::WOOD, 4)],
-        output: ItemId::WARP,
-        output_count: 1,
-        label: "裂痕锚 ×1",
-    },
-    Recipe {
         id: "wood_bow",
         station: CraftStation::Workbench,
-        inputs: &[(ItemId::WOOD, 8), (ItemId::SCRAP, 2)],
+        inputs: &[(ItemId::WOOD, 8), (ItemId::STONE, 2)],
         output: ItemId::WOOD_BOW,
         output_count: 1,
         label: "木弓 ×1",
@@ -135,7 +143,7 @@ pub const RECIPES: &[Recipe] = &[
     Recipe {
         id: "gel_staff",
         station: CraftStation::Workbench,
-        inputs: &[(ItemId::WOOD, 4), (ItemId::GEL, 6), (ItemId::SCRAP, 2)],
+        inputs: &[(ItemId::WOOD, 4), (ItemId::GEL, 6), (ItemId::STONE, 2)],
         output: ItemId::GEL_STAFF,
         output_count: 1,
         label: "凝胶法杖 ×1",
@@ -143,7 +151,7 @@ pub const RECIPES: &[Recipe] = &[
     Recipe {
         id: "furnace",
         station: CraftStation::Workbench,
-        inputs: &[(ItemId::STONE, 12), (ItemId::SCRAP, 4)],
+        inputs: &[(ItemId::STONE, 12), (ItemId::STONE, 4)],
         output: ItemId::FURNACE,
         output_count: 1,
         label: "熔炉 ×1",
@@ -191,7 +199,7 @@ pub const RECIPES: &[Recipe] = &[
     Recipe {
         id: "travel_pack",
         station: CraftStation::Workbench,
-        inputs: &[(ItemId::WOOD, 10), (ItemId::GEL, 4), (ItemId::SCRAP, 2)],
+        inputs: &[(ItemId::WOOD, 10), (ItemId::GEL, 4), (ItemId::STONE, 2)],
         output: ItemId::TRAVEL_PACK,
         output_count: 1,
         label: "旅行包 ×1",
@@ -199,7 +207,7 @@ pub const RECIPES: &[Recipe] = &[
     Recipe {
         id: "grapple",
         station: CraftStation::Workbench,
-        inputs: &[(ItemId::WOOD, 6), (ItemId::SCRAP, 4)],
+        inputs: &[(ItemId::WOOD, 6), (ItemId::STONE, 4)],
         output: ItemId::GRAPPLE,
         output_count: 1,
         label: "钩爪 ×1",
@@ -207,7 +215,7 @@ pub const RECIPES: &[Recipe] = &[
     Recipe {
         id: "cloud_bottle",
         station: CraftStation::Workbench,
-        inputs: &[(ItemId::GEL, 6), (ItemId::SCRAP, 2)],
+        inputs: &[(ItemId::GEL, 6), (ItemId::STONE, 2)],
         output: ItemId::CLOUD_BOTTLE,
         output_count: 1,
         label: "凝胶云瓶 ×1",

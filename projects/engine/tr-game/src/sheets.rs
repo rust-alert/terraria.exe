@@ -2,7 +2,7 @@
 //!
 //! 这些数字来自文件名，不是夹具 `BlockId` / `ItemId`。
 
-use tr_core::{BlockId, ItemId};
+use tr_core::{BlockId, ItemId, WallId};
 
 /// 夹具方块对应的 `Tiles_{n}.xnb`。没有对应文件时不画这张图。
 pub(crate) fn tile_file(id: BlockId) -> Option<u32> {
@@ -50,9 +50,26 @@ pub(crate) fn item_file(id: ItemId) -> Option<u32> {
         ItemId::CLOUD_BOTTLE => 53,
         ItemId::GRAPPLE => 84,
         ItemId::PLATFORM => 94,
+        ItemId::WOOD_WALL => 93,
+        ItemId::STONE_WALL => 26,
+        ItemId::COPPER_COIN => 71,
+        _ => return None,
+    })
+}
+
+/// 夹具墙对应的 `Wall_{n}.xnb`（文件名编号，非夹具 `WallId`）。
+pub(crate) fn wall_file(id: WallId) -> Option<u32> {
+    Some(match id {
+        WallId::STONE => 1,
+        WallId::DIRT => 2,
+        WallId::WOOD => 4,
         _ => return None,
     })
 }
 
 /// 史莱姆外形。这张是灰度，绘制时再乘身体色。
 pub(crate) const SLIME_NPC_FILE: u32 = 1;
+/// 正版恶魔眼 `NPC_2`。
+pub(crate) const DEMON_EYE_NPC_FILE: u32 = 2;
+/// 正版僵尸 `NPC_3`。
+pub(crate) const ZOMBIE_NPC_FILE: u32 = 3;

@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 use tr_core::BlockId;
 
-use crate::world::{WORLD_H, WORLD_W, World, wrap_tx};
+use crate::world::{WORLD_H, World, wrap_tx};
 
 /// 单格光照采样：乘到材质色上（`shade`）。
 #[derive(Debug, Clone, Copy)]
@@ -49,8 +49,8 @@ impl LightMap {
             };
         }
         let x = wrap_tx(tx);
-        let lx = (x - self.x0).rem_euclid(WORLD_W);
-        if lx >= self.w {
+        let lx = x - self.x0;
+        if lx < 0 || lx >= self.w {
             return LightSample {
                 r: 0.05,
                 g: 0.05,
@@ -219,12 +219,10 @@ fn sky_tint(dayness: f32) -> (f32, f32, f32) {
 }
 
 fn emitter_rgb(id: BlockId) -> (f32, f32, f32, f32) {
-    use crate::palette::{GLOW_DEFAULT, GLOW_FURNACE, GLOW_POD, GLOW_TORCH, GLOW_WARP};
+    use crate::palette::{GLOW_DEFAULT, GLOW_FURNACE, GLOW_TORCH};
     match id {
         BlockId::TORCH => (1.0, GLOW_TORCH.r, GLOW_TORCH.g, GLOW_TORCH.b),
         BlockId::FURNACE => (0.92, GLOW_FURNACE.r, GLOW_FURNACE.g, GLOW_FURNACE.b),
-        BlockId::POD => (0.95, GLOW_POD.r, GLOW_POD.g, GLOW_POD.b),
-        BlockId::WARP => (0.88, GLOW_WARP.r, GLOW_WARP.g, GLOW_WARP.b),
         _ => (0.75, GLOW_DEFAULT.r, GLOW_DEFAULT.g, GLOW_DEFAULT.b),
     }
 }

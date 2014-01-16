@@ -1,15 +1,18 @@
 //! 侧视地表世界：确定性高度 + 方块表 + 地面掉落物。
 //!
 //! 坐标：`y = 0` 为世界顶（天空），`y` 增大向地心。
-//! **X 为左右回环圆柱**（行星拓扑）：出左缘进右缘。
+//! 有限边界（不回环）；逻辑素材 16 像素格，`TILE` 为屏上 2× 放大（32）。
 
 use std::collections::HashMap;
 use std::f32::consts::TAU;
 use tr_core::{BiomeId, BlockId, FluidLevel, ItemId, WallId, biome_at};
 
-pub const WORLD_W: i32 = 160;
-pub const WORLD_H: i32 = 72;
-/// 一格 32 屏像素，对应正版 16 像素块的 2 倍。不能用 20，否则原图会被拉变形。
+/// 约原版「小世界」宽度的 1/10，兼顾可玩宽度与生成耗时。
+pub const WORLD_W: i32 = 420;
+pub const WORLD_H: i32 = 180;
+/// 出生列（世界中段）。
+pub const SPAWN_TX: i32 = WORLD_W / 2;
+/// 一格 32 屏像素 = 正版 16 像素块的 2 倍显示。物理与图集均按 16 逻辑像素比例。
 pub const TILE: f32 = 32.0;
 
 /// 世界宽度（世界单位）。
@@ -17,33 +20,34 @@ pub fn world_pixel_w() -> f32 {
     WORLD_W as f32 * TILE
 }
 
-/// 格坐标 X 回环到 `[0, WORLD_W)`。
+/// 世界高度（世界单位）。
+pub fn world_pixel_h() -> f32 {
+    WORLD_H as f32 * TILE
+}
+
+/// 格坐标 X 是否在世界内。
+pub fn x_in_bounds(x: i32) -> bool {
+    x >= 0 && x < WORLD_W
+}
+
+/// 格坐标 X 钳到 `[0, WORLD_W)`。仅用于已知需合法下标的路径。
 pub fn wrap_tx(x: i32) -> i32 {
-    let w = WORLD_W;
-    ((x % w) + w) % w
+    x.clamp(0, WORLD_W - 1)
 }
 
-/// 世界坐标 X 回环到 `[0, world_pixel_w)`。
+/// 世界坐标 X 钳到世界内（给碰撞盒左缘用，调用方再减宽度）。
 pub fn wrap_xf(x: f32) -> f32 {
-    x.rem_euclid(world_pixel_w())
+    x.clamp(0.0, (WORLD_W as f32 * TILE - 1.0).max(0.0))
 }
 
-/// 从 `from` 到 `to` 的最短有符号水平距离（可跨缝）。
+/// 水平有符号距离（有限边界，不再跨缝取最短）。
 pub fn wrap_delta_x(from: f32, to: f32) -> f32 {
-    let w = world_pixel_w();
-    let mut d = to - from;
-    if d > w * 0.5 {
-        d -= w;
-    } else if d < -w * 0.5 {
-        d += w;
-    }
-    d
+    to - from
 }
 
-/// 将方块左缘 `tx*TILE` 挪到最靠近 `near_x` 的周期像。
-pub fn tile_x_near(tx: i32, near_x: f32) -> f32 {
-    let bx = wrap_tx(tx) as f32 * TILE;
-    near_x + wrap_delta_x(near_x, bx)
+/// 方块左缘世界 X（有限边界，无周期像）。
+pub fn tile_x_near(tx: i32, _near_x: f32) -> f32 {
+    wrap_tx(tx) as f32 * TILE
 }
 
 /// 与 `player::HIT_H` 同式，避免循环依赖。
@@ -126,13 +130,11 @@ impl World {
                         _ => BlockId::DIRT,
                     }
                 } else {
-                    // 深层默认石头。铜走洞穴旁矿脉；铁与废料只在更深处稀疏出现。
+                    // 深层默认石头；铁矿稀疏出现。
                     let depth = y - h;
                     let roll = hash2(seed, x, y);
                     if depth >= 14 && roll % 67 == 0 {
                         BlockId::IRON_ORE
-                    } else if depth >= 10 && roll % 53 == 0 {
-                        BlockId::SCRAP
                     } else {
                         BlockId::STONE
                     }
@@ -153,33 +155,7 @@ impl World {
         w.blocks = blocks;
         w.walls = walls;
 
-        // 逃生舱：宽 4、净空 ≥3 格
-        let spawn_x = 24;
-        let sh = surface_height(seed, spawn_x);
-        for dx in 0..4 {
-            let x = wrap_tx(spawn_x + dx);
-            if w.y_in_bounds(sh) {
-                w.set(x, sh, BlockId::POD);
-            }
-        }
-        for dy in 1..=4 {
-            for dx in 0..4 {
-                let x = wrap_tx(spawn_x + dx);
-                let y = sh - dy;
-                if !w.y_in_bounds(y) {
-                    continue;
-                }
-                let wall = dx == 0 || dx == 3 || dy == 4;
-                let hatch = dy == 4 && (dx == 1 || dx == 2);
-                if hatch {
-                    w.set(x, y, BlockId::AIR);
-                } else if wall {
-                    w.set(x, y, BlockId::POD);
-                } else {
-                    w.set(x, y, BlockId::AIR);
-                }
-            }
-        }
+        let spawn_x = SPAWN_TX;
 
         w.plant_trees();
         w.carve_and_fill_lakes();
@@ -187,22 +163,13 @@ impl World {
         w.carve_shallow_caves();
         w.place_copper_veins();
 
-        // 裂痕锚放在环行远处，不挡出生后的第一段地表。
-        let wx = wrap_tx(spawn_x + 108);
-        let wh = surface_height(seed, wx);
-        if w.get(wx, wh - 1) == BlockId::AIR || w.get(wx, wh - 1) == BlockId::LEAF {
-            w.set(wx, wh - 1, BlockId::WARP);
-        } else {
-            w.set(wx, wh - 2, BlockId::WARP);
-        }
-        // 逃生舱旁一枚火把，夜里好辨认
+        // 出生点旁火把与补给箱
         let (sx, _) = w.spawn_pos();
         let stx = wrap_tx((sx / TILE).floor() as i32 + 2);
         let sty = surface_height(seed, stx) - 2;
         if w.get(stx, sty) == BlockId::AIR {
             w.set(stx, sty, BlockId::TORCH);
         }
-        // 舱旁补给木箱
         let ctx = wrap_tx(stx + 2);
         let cty = surface_height(seed, ctx) - 1;
         if w.get(ctx, cty) == BlockId::AIR {
@@ -214,6 +181,7 @@ impl World {
                 chest.insert(ItemId::LADDER, 8);
             }
         }
+        let _ = spawn_x;
 
         w
     }
@@ -223,13 +191,7 @@ impl World {
         let mut x = 8;
         while x < WORLD_W - 4 {
             let wx = wrap_tx(x);
-            let near_pod = (0..6).any(|d| {
-                let t = wrap_tx(24 + d);
-                let dist = (wx - t)
-                    .rem_euclid(WORLD_W)
-                    .min((t - wx).rem_euclid(WORLD_W));
-                dist < 8
-            });
+            let near_spawn = (wx - SPAWN_TX).abs() < 10;
             let h = surface_height(self.seed, wx);
             let biome = biome_at(self.seed, wx);
             let plantable = matches!(
@@ -237,7 +199,7 @@ impl World {
                 BlockId::GRASS | BlockId::SNOW | BlockId::DIRT
             );
             let roll = hash2(self.seed, wx, 91) % 100;
-            if !near_pod && plantable && roll < biome.tree_chance() as u64 {
+            if !near_spawn && plantable && roll < biome.tree_chance() as u64 {
                 let trunk = 4 + (hash2(self.seed, wx, 7) % 4) as i32;
                 self.grow_tree_at(wx, h, trunk);
                 x += 5 + (hash2(self.seed, wx, 13) % 4) as i32;
@@ -247,9 +209,13 @@ impl World {
         }
     }
 
-    /// 在地表挖浅湖并灌满源水（避开出生舱）。
+    /// 在地表挖浅湖并灌满源水（避开出生点）。
     fn carve_and_fill_lakes(&mut self) {
-        let centers = [wrap_tx(24 + 38), wrap_tx(24 + 95), wrap_tx(24 + 128)];
+        let centers = [
+            wrap_tx(SPAWN_TX + 70),
+            wrap_tx(SPAWN_TX + 150),
+            wrap_tx(SPAWN_TX - 90),
+        ];
         for (i, &cx) in centers.iter().enumerate() {
             let half_w = 6 + (hash2(self.seed, cx, 401 + i as i32) % 4) as i32;
             let depth = 3 + (hash2(self.seed, cx, 503 + i as i32) % 3) as i32;
@@ -269,7 +235,7 @@ impl World {
                         continue;
                     }
                     let id = self.get(x, y);
-                    if id == BlockId::POD || id == BlockId::WARP || id == BlockId::CHEST {
+                    if id == BlockId::CHEST {
                         continue;
                     }
                     if y < water_y {
@@ -320,7 +286,7 @@ impl World {
                     break;
                 }
                 let id = self.get(x, y);
-                if id.solid() && id != BlockId::POD {
+                if id.solid() {
                     self.set(x, y, BlockId::AIR);
                 }
                 let below = y + 1;
@@ -342,15 +308,12 @@ impl World {
         }
     }
 
-    /// 浅层洞穴：水平虫洞，避开逃生舱正下方。
+    /// 浅层洞穴：水平虫洞，避开出生点正下方。
     fn carve_shallow_caves(&mut self) {
-        const SPAWN_X: i32 = 24;
-        for i in 0..12i32 {
+        for i in 0..18i32 {
             let mut x = wrap_tx((hash2(self.seed, i, 910) % WORLD_W as u64) as i32);
-            let dist = (x - SPAWN_X)
-                .rem_euclid(WORLD_W)
-                .min((SPAWN_X - x).rem_euclid(WORLD_W));
-            if dist < 18 {
+            let dist = (x - SPAWN_TX).abs();
+            if dist < 22 {
                 continue;
             }
             let sh = surface_height(self.seed, x);
@@ -387,7 +350,7 @@ impl World {
         let id = self.get(x, y);
         if !matches!(
             id,
-            BlockId::STONE | BlockId::DIRT | BlockId::SCRAP | BlockId::IRON_ORE | BlockId::SAND
+            BlockId::STONE | BlockId::DIRT | BlockId::IRON_ORE | BlockId::SAND
         ) {
             return;
         }
@@ -563,10 +526,9 @@ impl World {
     }
 
     pub fn clear_water(&mut self, x: i32, y: i32) {
-        if !self.y_in_bounds(y) {
+        if !self.in_bounds(x, y) {
             return;
         }
-        let x = wrap_tx(x);
         let idx = (y * WORLD_W + x) as usize;
         if self.blocks[idx] == BlockId::WATER {
             self.blocks[idx] = BlockId::AIR;
@@ -607,7 +569,7 @@ impl World {
     }
 
     fn fluid_idx(x: i32, y: i32) -> usize {
-        (y * WORLD_W + wrap_tx(x)) as usize
+        (y * WORLD_W + x) as usize
     }
 
     pub fn fluid_level(&self, x: i32, y: i32) -> FluidLevel {
@@ -618,10 +580,9 @@ impl World {
     }
 
     pub fn set_water(&mut self, x: i32, y: i32, level: FluidLevel) {
-        if !self.y_in_bounds(y) {
+        if !self.in_bounds(x, y) {
             return;
         }
-        let x = wrap_tx(x);
         let idx = (y * WORLD_W + x) as usize;
         self.blocks[idx] = BlockId::WATER;
         self.fluid[idx] = level.clamp_valid();
@@ -631,7 +592,9 @@ impl World {
 
     /// 在地表草皮上长出一棵树（`surface_y` 为草皮格 Y）。
     pub fn grow_tree_at(&mut self, tx: i32, surface_y: i32, trunk: i32) {
-        let tx = wrap_tx(tx);
+        if !x_in_bounds(tx) {
+            return;
+        }
         let trunk = trunk.clamp(3, 8);
         // 清掉树苗
         self.grow_t.remove(&(tx, surface_y - 1));
@@ -759,32 +722,33 @@ impl World {
         y >= 0 && y < WORLD_H
     }
 
-    /// Y 合法即可；X 始终回环，无「出界」。
-    pub fn in_bounds(&self, _x: i32, y: i32) -> bool {
-        self.y_in_bounds(y)
+    /// 格是否在有限世界内。
+    pub fn in_bounds(&self, x: i32, y: i32) -> bool {
+        x_in_bounds(x) && self.y_in_bounds(y)
     }
 
     pub fn get(&self, x: i32, y: i32) -> BlockId {
         if !self.y_in_bounds(y) {
             return BlockId::STONE;
         }
-        let x = wrap_tx(x);
+        // 水平出界视为基岩墙，阻挡玩家离开地图。
+        if !x_in_bounds(x) {
+            return BlockId::STONE;
+        }
         self.blocks[(y * WORLD_W + x) as usize]
     }
 
     pub fn get_wall(&self, x: i32, y: i32) -> WallId {
-        if !self.y_in_bounds(y) {
+        if !self.in_bounds(x, y) {
             return WallId::NONE;
         }
-        let x = wrap_tx(x);
         self.walls[(y * WORLD_W + x) as usize]
     }
 
     pub fn set_wall(&mut self, x: i32, y: i32, id: WallId) {
-        if !self.y_in_bounds(y) {
+        if !self.in_bounds(x, y) {
             return;
         }
-        let x = wrap_tx(x);
         self.walls[(y * WORLD_W + x) as usize] = id;
         self.wall_hp.remove(&(x, y));
     }
@@ -793,10 +757,9 @@ impl World {
     pub fn wall_hp_left(&self, x: i32, y: i32) -> u16 {
         let id = self.get_wall(x, y);
         let max = id.max_hp();
-        if max == 0 {
+        if max == 0 || !self.in_bounds(x, y) {
             return 0;
         }
-        let x = wrap_tx(x);
         self.wall_hp.get(&(x, y)).copied().unwrap_or(max)
     }
 
@@ -812,7 +775,7 @@ impl World {
 
     /// 对背景墙造成伤害；打碎则清空并返回原墙。
     pub fn apply_wall_damage(&mut self, x: i32, y: i32, dmg: u16) -> Option<WallId> {
-        if !self.y_in_bounds(y) || dmg == 0 {
+        if !self.in_bounds(x, y) || dmg == 0 {
             return None;
         }
         let id = self.get_wall(x, y);
@@ -820,7 +783,6 @@ impl World {
             return None;
         }
         let max = id.max_hp();
-        let x = wrap_tx(x);
         let key = (x, y);
         let left = self.wall_hp.get(&key).copied().unwrap_or(max);
         let next = left.saturating_sub(dmg);
@@ -835,10 +797,9 @@ impl World {
     }
 
     pub fn set(&mut self, x: i32, y: i32, id: BlockId) {
-        if !self.y_in_bounds(y) {
+        if !self.in_bounds(x, y) {
             return;
         }
-        let x = wrap_tx(x);
         let prev = self.blocks[(y * WORLD_W + x) as usize];
         self.blocks[(y * WORLD_W + x) as usize] = id;
         self.damage_hp.remove(&(x, y));
@@ -872,8 +833,7 @@ impl World {
     }
 
     pub fn chest_at(&mut self, x: i32, y: i32) -> Option<&mut HashMap<ItemId, u32>> {
-        let x = wrap_tx(x);
-        if self.get(x, y) != BlockId::CHEST {
+        if !self.in_bounds(x, y) || self.get(x, y) != BlockId::CHEST {
             return None;
         }
         Some(self.chests.entry((x, y)).or_default())
@@ -882,13 +842,13 @@ impl World {
     pub fn near_chest(&self, px: f32, py: f32, pw: f32, ph: f32) -> Option<(i32, i32)> {
         let cx = px + pw * 0.5;
         let cy = py + ph * 0.5;
-        let tx = wrap_tx((cx / TILE).floor() as i32);
+        let tx = (cx / TILE).floor() as i32;
         let ty = (cy / TILE).floor() as i32;
         for dy in -2..=2 {
             for dx in -2..=2 {
-                let x = wrap_tx(tx + dx);
+                let x = tx + dx;
                 let y = ty + dy;
-                if self.get(x, y) == BlockId::CHEST {
+                if self.in_bounds(x, y) && self.get(x, y) == BlockId::CHEST {
                     return Some((x, y));
                 }
             }
@@ -1125,7 +1085,7 @@ impl World {
     }
 
     pub fn spawn_pos(&self) -> (f32, f32) {
-        let tx = 26;
+        let tx = SPAWN_TX;
         let sh = surface_height(self.seed, tx);
         let feet_y = sh as f32 * TILE;
         let x = tx as f32 * TILE + (TILE - PLAYER_HIT_W) * 0.5;
@@ -1253,19 +1213,20 @@ impl World {
     }
 }
 
-/// 周期地表：用绕圆柱角度采样，缝处连续。
+/// 有限边界地表高度：按列噪声，不再绕圆柱。
 fn surface_height(seed: u64, x: i32) -> i32 {
     let x = wrap_tx(x);
-    let ang = x as f32 / WORLD_W as f32 * TAU;
+    let t = x as f32 / WORLD_W as f32;
     let phase = (seed as f32 * 0.001).sin();
-    let n1 = ((ang * 3.0 + phase).sin() * 4.0) as i32;
-    let n2 = ((ang * 1.0 + phase * 0.5).cos() * 2.0) as i32;
-    let base = WORLD_H / 2 + 8;
-    (base + n1 + n2).clamp(12, WORLD_H - 8)
+    let n1 = ((t * TAU * 3.0 + phase).sin() * 6.0) as i32;
+    let n2 = ((t * TAU * 1.2 + phase * 0.5).cos() * 3.0) as i32;
+    let n3 = ((t * TAU * 7.0 + phase * 1.3).sin() * 2.0) as i32;
+    let base = WORLD_H / 3 + 10;
+    (base + n1 + n2 + n3).clamp(18, WORLD_H - 24)
 }
 
 fn hash2(seed: u64, x: i32, y: i32) -> u64 {
-    let x = wrap_tx(x) as u64;
+    let x = x.clamp(0, WORLD_W) as u64;
     let mut v =
         seed ^ x.wrapping_mul(0x9E3779B97F4A7C15) ^ (y as u64).wrapping_mul(0xBF58476D1CE4E5B9);
     v = (v ^ (v >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
