@@ -1,4 +1,4 @@
-//! HUD 与制作面板（效果图构图：四角分区 + 底栏热键）。
+//! HUD：原版式左上快捷栏、右上生命心 / 魔力星、迷你地图条与面板。
 
 use spark_core::{Color, Rect, Vec2};
 use spark_renderer::DrawList;
@@ -6,7 +6,6 @@ use spark_widget::{label, panel};
 use tr_core::ItemId;
 
 use crate::craft::{CraftStation, RECIPES};
-use crate::portal;
 use crate::world::{TILE, WORLD_H, WORLD_W, wrap_tx};
 
 use crate::app::TerrariaApp;
@@ -27,14 +26,12 @@ pub(crate) enum HudPointer {
     /// 背包内徒手配方行 → `RECIPES` 下标。
     BagCraft(usize),
     CraftRow(usize),
-    RailExplore,
+    /// 商人商店货架行 → `MERCHANT_OFFERS` 下标。
+    ShopRow(usize),
     RailCraft,
-    RailMagic,
     RailBag,
     RailMap,
-    RailQuest,
     RailSettings,
-    QuickShip,
     QuickMap,
     QuickBag,
 }
@@ -50,46 +47,17 @@ const BAG_COLS: usize = 7;
 const BAG_SLOT: f32 = 52.0;
 const BAG_GAP: f32 = 6.0;
 
-fn fill_disc(draw: &mut DrawList, cx: f32, cy: f32, radius: f32, color: Color) {
-    let r = radius.max(1.0);
-    let y0 = (cy - r).floor() as i32;
-    let y1 = (cy + r).ceil() as i32;
-    for y in y0..=y1 {
-        let dy = y as f32 + 0.5 - cy;
-        let inner = r * r - dy * dy;
-        if inner <= 0.0 {
-            continue;
-        }
-        let half = inner.sqrt();
-        draw.fill_rect(Rect::new(cx - half, y as f32, half * 2.0, 1.0), color);
-    }
-}
-
-fn paint_bar(draw: &mut DrawList, x: f32, y: f32, w: f32, h: f32, ratio: f32, fill: Color) {
-    draw.fill_rect(Rect::new(x, y, w, h), Color::rgb(0.08, 0.09, 0.12));
-    let r = ratio.clamp(0.0, 1.0);
-    if r > 0.01 {
-        draw.fill_rect(Rect::new(x, y, w * r, h), fill);
-        // 顶端高光，玻璃条读感。
-        draw.fill_rect(
-            Rect::new(x, y, w * r, (h * 0.35).max(1.0)),
-            Color::rgba(1.0, 1.0, 1.0, 0.18),
-        );
-    }
-}
 
 fn item_swatch(id: ItemId) -> Color {
     match id {
         ItemId::DIRT => Color::rgb(0.55, 0.38, 0.22),
         ItemId::STONE => Color::rgb(0.55, 0.58, 0.62),
-        ItemId::SCRAP => Color::rgb(0.9, 0.7, 0.3),
         ItemId::WOOD => Color::rgb(0.7, 0.48, 0.25),
         ItemId::WORKBENCH => Color::rgb(0.8, 0.55, 0.3),
         ItemId::SAPLING => Color::rgb(0.4, 0.85, 0.35),
         ItemId::WOOD_PICK => Color::rgb(0.65, 0.5, 0.35),
         ItemId::STONE_PICK => Color::rgb(0.7, 0.72, 0.78),
         ItemId::WOOD_SWORD => Color::rgb(0.85, 0.75, 0.4),
-        ItemId::WARP => Color::rgb(0.7, 0.4, 0.95),
         ItemId::TORCH => Color::rgb(1.0, 0.7, 0.25),
         ItemId::GEL => Color::rgb(0.75, 0.35, 0.85),
         ItemId::PLATFORM => Color::rgb(0.7, 0.48, 0.25),
@@ -101,6 +69,9 @@ fn item_swatch(id: ItemId) -> Color {
         ItemId::GRAPPLE => Color::rgb(0.7, 0.72, 0.78),
         ItemId::CLOUD_BOTTLE => Color::rgb(0.55, 0.78, 0.95),
         ItemId::ROPE => Color::rgb(0.72, 0.55, 0.28),
+        ItemId::WOOD_WALL => Color::rgb(0.62, 0.42, 0.22),
+        ItemId::STONE_WALL => Color::rgb(0.48, 0.5, 0.55),
+        ItemId::COPPER_COIN => Color::rgb(0.85, 0.55, 0.28),
         _ => Color::rgb(0.5, 0.55, 0.6),
     }
 }
@@ -113,41 +84,24 @@ fn clock_from_day_t(day_t: f32) -> (u32, u32) {
     (h % 24, m % 60)
 }
 
-fn hotbar_geom(screen_w: f32, screen_h: f32) -> (f32, f32, f32, f32, usize) {
+fn hotbar_geom(screen_w: f32, _screen_h: f32) -> (f32, f32, f32, f32, usize) {
+    let slot = 44.0;
+    let gap = 4.0;
     let n = HOTBAR_SLOTS;
-    let slot = 48.0;
-    let gap = 6.0;
-    let total_w = n as f32 * (slot + gap) - gap;
-    let base_x = (screen_w - total_w) * 0.5;
-    let base_y = screen_h - 68.0;
+    let _ = screen_w;
+    // 原版快捷栏在左上。
+    let base_x = 20.0;
+    let base_y = 20.0;
     (base_x, base_y, slot, gap, n)
 }
 
-fn left_rail_rect(index: usize) -> Rect {
-    // 默认图标栏：窄，少遮挡画面。
-    Rect::new(14.0, 72.0 + index as f32 * 48.0, 40.0, 40.0)
+
+fn vitals_rect(screen_w: f32) -> Rect {
+    Rect::new(screen_w - 280.0, 12.0, 264.0, 120.0)
 }
 
-fn left_rail_expanded_rect(index: usize) -> Rect {
-    Rect::new(14.0, 72.0 + index as f32 * 48.0, 108.0, 40.0)
-}
-
-fn quick_action_rect(screen_w: f32, screen_h: f32, index: usize) -> Rect {
-    let x0 = screen_w - 16.0 - 3.0 * 56.0;
-    Rect::new(x0 + index as f32 * 56.0, screen_h - 68.0, 50.0, 50.0)
-}
-
-fn vitals_rect(screen_h: f32) -> Rect {
-    Rect::new(72.0, screen_h - 118.0, 280.0, 96.0)
-}
-
-fn location_card_rect(screen_w: f32) -> Rect {
-    Rect::new(screen_w - 220.0 - 16.0, 16.0, 220.0, 148.0)
-}
-
-fn quest_card_rect(screen_w: f32, line_count: usize) -> Rect {
-    let h = 52.0 + line_count as f32 * 22.0;
-    Rect::new(screen_w - 220.0 - 16.0, 176.0, 220.0, h)
+fn minimap_chip_rect() -> Rect {
+    Rect::new(72.0, 48.0, 150.0, 64.0)
 }
 
 fn craft_panel_rect(screen_w: f32, recipe_n: usize) -> Rect {
@@ -216,8 +170,28 @@ fn map_panel_rect(screen_w: f32, screen_h: f32) -> Rect {
     Rect::new((screen_w - w) * 0.5, (screen_h - h) * 0.5 - 20.0, w, h)
 }
 
+fn shop_panel_rect(screen_w: f32) -> Rect {
+    let n = crate::shop::MERCHANT_OFFERS.len() as f32;
+    Rect::new(
+        screen_w * 0.5 - 220.0,
+        88.0,
+        440.0,
+        64.0 + n * 40.0 + 36.0,
+    )
+}
+
+fn shop_row_rect(screen_w: f32, i: usize) -> Rect {
+    let panel = shop_panel_rect(screen_w);
+    Rect::new(
+        panel.x + 16.0,
+        panel.y + 56.0 + i as f32 * 40.0,
+        panel.w - 32.0,
+        34.0,
+    )
+}
+
 fn brand_rect() -> Rect {
-    Rect::new(72.0, 16.0, 280.0, 44.0)
+    Rect::new(20.0, 72.0, 120.0, 20.0)
 }
 
 impl TerrariaApp {
@@ -226,7 +200,7 @@ impl TerrariaApp {
         if self.map_open {
             self.craft_open = false;
             self.bag_open = false;
-            self.portal.close_menu();
+            self.shop_open = false;
             self.flush_cursor_to_inv();
         }
     }
@@ -236,8 +210,19 @@ impl TerrariaApp {
         if self.bag_open {
             self.craft_open = false;
             self.map_open = false;
-            self.portal.close_menu();
+            self.shop_open = false;
         } else {
+            self.flush_cursor_to_inv();
+        }
+    }
+
+    pub(crate) fn toggle_shop(&mut self) {
+        self.shop_open = !self.shop_open;
+        if self.shop_open {
+            self.craft_open = false;
+            self.bag_open = false;
+            self.map_open = false;
+            self.chest_open = None;
             self.flush_cursor_to_inv();
         }
     }
@@ -247,6 +232,17 @@ impl TerrariaApp {
         let p = Vec2::new(mx, my);
 
         // 可点控件优先于整块 Chrome，否则制作行 / 背包格永远点不到。
+        if self.shop_open {
+            let panel = shop_panel_rect(self.screen_w);
+            if panel.contains(p) {
+                for i in 0..crate::shop::MERCHANT_OFFERS.len() {
+                    if shop_row_rect(self.screen_w, i).contains(p) {
+                        return HudPointer::ShopRow(i);
+                    }
+                }
+                return HudPointer::Chrome;
+            }
+        }
         if self.craft_open {
             let panel = craft_panel_rect(self.screen_w, RECIPES.len());
             if panel.contains(p) {
@@ -318,34 +314,6 @@ impl TerrariaApp {
                 return HudPointer::ChestRow(entries_n);
             }
         }
-        if self.portal.menu_open {
-            let panel = Rect::new(self.screen_w * 0.5 - 200.0, 100.0, 400.0, 400.0);
-            if panel.contains(p) {
-                return HudPointer::Chrome;
-            }
-        }
-
-        for i in 0..7 {
-            let expanded = (i == 1 && self.craft_open)
-                || (i == 3 && self.bag_open)
-                || (i == 4 && self.map_open);
-            let r = if expanded {
-                left_rail_expanded_rect(i)
-            } else {
-                left_rail_rect(i)
-            };
-            if r.contains(p) {
-                return match i {
-                    0 => HudPointer::RailExplore,
-                    1 => HudPointer::RailCraft,
-                    2 => HudPointer::RailMagic,
-                    3 => HudPointer::RailBag,
-                    4 => HudPointer::RailMap,
-                    5 => HudPointer::RailQuest,
-                    _ => HudPointer::RailSettings,
-                };
-            }
-        }
 
         let (base_x, base_y, slot, gap, n) = hotbar_geom(self.screen_w, self.screen_h);
         for i in 0..n {
@@ -355,20 +323,9 @@ impl TerrariaApp {
             }
         }
 
-        for i in 0..3 {
-            if quick_action_rect(self.screen_w, self.screen_h, i).contains(p) {
-                return match i {
-                    0 => HudPointer::QuickShip,
-                    1 => HudPointer::QuickMap,
-                    _ => HudPointer::QuickBag,
-                };
-            }
-        }
-
         if brand_rect().contains(p)
-            || vitals_rect(self.screen_h).contains(p)
-            || location_card_rect(self.screen_w).contains(p)
-            || quest_card_rect(self.screen_w, self.objective.checklist().len()).contains(p)
+            || vitals_rect(self.screen_w).contains(p)
+            || minimap_chip_rect().contains(p)
         {
             return HudPointer::Chrome;
         }
@@ -430,7 +387,11 @@ impl TerrariaApp {
                 let msg = if left {
                     if let (Some(player), Some(world)) = (self.player.as_mut(), self.world.as_mut())
                     {
-                        player.try_craft(world, i)
+                        let out = player.try_craft(world, i);
+                        if out.as_ref().is_some_and(|m| m.starts_with("制成")) {
+                            crate::sfx::craft_ok(&self.sfx, &self.audio);
+                        }
+                        out
                     } else {
                         None
                     }
@@ -439,18 +400,34 @@ impl TerrariaApp {
                 };
                 (true, msg)
             }
-            HudPointer::RailExplore => (true, Some("探索中 · 自由漫步".into())),
+            HudPointer::ShopRow(i) => {
+                let msg = if left {
+                    if let Some(player) = self.player.as_mut() {
+                        match crate::shop::try_buy(&mut player.inv, i) {
+                            Ok(m) => {
+                                crate::sfx::coins(&self.sfx, &self.audio);
+                                Some(m)
+                            }
+                            Err(e) => Some(e),
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                (true, msg)
+            }
             HudPointer::RailCraft => {
                 self.craft_open = !self.craft_open;
                 if self.craft_open {
                     self.bag_open = false;
                     self.map_open = false;
-                    self.portal.close_menu();
+                    self.shop_open = false;
                     self.flush_cursor_to_inv();
                 }
                 (true, None)
             }
-            HudPointer::RailMagic => (true, Some("法术面板尚未开启".into())),
             HudPointer::RailBag | HudPointer::QuickBag => {
                 self.toggle_bag();
                 (true, None)
@@ -466,12 +443,10 @@ impl TerrariaApp {
                     }),
                 )
             }
-            HudPointer::RailQuest => (true, Some(format!("任务 · {}", self.objective.title()))),
             HudPointer::RailSettings => {
                 self.screen = crate::app::Screen::Pause;
                 (true, None)
             }
-            HudPointer::QuickShip => (true, Some("飞船尚未就绪".into())),
         }
     }
 
@@ -534,12 +509,9 @@ impl TerrariaApp {
         };
 
         self.paint_brand(draw);
-        self.paint_left_rail(draw);
-        self.paint_vitals(draw, player);
         self.paint_hotbar(draw, player);
-        self.paint_location_card(draw, player, world);
-        self.paint_quest_card(draw);
-        self.paint_quick_actions(draw);
+        self.paint_vitals(draw, player);
+        self.paint_minimap_chip(draw, player, world);
 
         if self.toast_t > 0.0 {
             label(
@@ -556,104 +528,14 @@ impl TerrariaApp {
             self.paint_debug_overlay(draw, player, world);
         }
 
-        // 自动进门蓄力提示（站在裂痕锚上且未开面板）
-        let gates = portal::collect_gates(world);
-        if !self.portal.menu_open
-            && portal::standing_in_warp(player, world)
-            && self.portal.charge > 0.02
-        {
-            let dest = gates
-                .get(self.portal.dest_idx % gates.len().max(1))
-                .map(|g| g.label.as_str())
-                .unwrap_or("—");
-            let prog = (self.portal.charge / portal::AUTO_CHARGE_NEED).clamp(0.0, 1.0);
-            panel(
-                draw,
-                Rect::new(96.0, self.screen_h - 230.0, 320.0, 52.0),
-                Color::rgba(0.12, 0.06, 0.18, 0.88),
-            );
-            label(
-                draw,
-                108.0,
-                self.screen_h - 222.0,
-                14.0,
-                Color::rgb(0.9, 0.7, 1.0),
-                &format!("自动折叠 → {dest}"),
-            );
-            paint_bar(
-                draw,
-                108.0,
-                self.screen_h - 198.0,
-                288.0,
-                10.0,
-                prog,
-                Color::rgb(0.75, 0.4, 1.0),
-            );
-        }
-
-        // 可选传送列表 UI
-        if self.portal.menu_open {
-            let here = portal::gate_index_at(player, world, &gates);
-            let panel_x = self.screen_w * 0.5 - 200.0;
-            let panel_y = 100.0;
-            let rows = gates
-                .iter()
-                .enumerate()
-                .filter(|(i, _)| Some(*i) != here)
-                .count()
-                .max(1);
-            let h = 56.0 + rows as f32 * 40.0 + 16.0;
-            panel(draw, Rect::new(panel_x, panel_y, 400.0, h), PANEL);
-            label(
-                draw,
-                panel_x + 16.0,
-                panel_y + 14.0,
-                16.0,
-                Color::rgb(0.95, 0.85, 1.0),
-                "裂痕传送 · 选择目标",
-            );
-            label(
-                draw,
-                panel_x + 16.0,
-                panel_y + 34.0,
-                12.0,
-                Color::rgb(0.65, 0.7, 0.85),
-                "↑↓/WS 选择 · Enter/点击确认 · Esc 关闭",
-            );
-            let mut row = 0usize;
-            for (i, g) in gates.iter().enumerate() {
-                if Some(i) == here {
-                    continue;
-                }
-                let y = panel_y + 52.0 + row as f32 * 40.0;
-                let selected = self.portal.dest_idx == i;
-                let bg = if selected {
-                    Color::rgb(0.32, 0.18, 0.48)
-                } else {
-                    Color::rgba(0.12, 0.10, 0.18, 0.9)
-                };
-                draw.fill_rect(Rect::new(panel_x + 16.0, y, 368.0, 36.0), bg);
-                label(
-                    draw,
-                    panel_x + 28.0,
-                    y + 8.0,
-                    14.0,
-                    if selected {
-                        Color::rgb(1.0, 0.92, 1.0)
-                    } else {
-                        Color::rgb(0.8, 0.78, 0.9)
-                    },
-                    &format!("{}. {}", row + 1, g.label),
-                );
-                row += 1;
-            }
-        }
-
         if self.craft_open {
             self.paint_craft(draw);
         }
         if self.bag_open {
             self.paint_bag(draw);
+        }
+        if self.shop_open {
+            self.paint_shop(draw);
         }
         if self.map_open {
             self.paint_map(draw);
@@ -690,136 +572,119 @@ impl TerrariaApp {
     }
 
     fn paint_brand(&self, draw: &mut DrawList) {
-        label(draw, 72.0, 18.0, 22.0, TEXT_MAIN, "Terraria");
-        label(
-            draw,
-            72.0,
-            42.0,
-            11.0,
-            TEXT_DIM,
-            "EXPLORE · BUILD · HARNESS · BELONG",
-        );
-    }
-
-    fn paint_left_rail(&self, draw: &mut DrawList) {
-        let items = [
-            ("探", "探索", false),
-            ("造", "建造", self.craft_open),
-            ("法", "魔法", false),
-            ("物", "物品", self.bag_open),
-            ("图", "地图", self.map_open),
-            ("任", "任务", false),
-            ("设", "设定", false),
-        ];
-        let (mx, my) = self.mouse;
-        let mouse = Vec2::new(mx, my);
-        let hover = items.iter().enumerate().find_map(|(i, _)| {
-            if left_rail_rect(i).contains(mouse) || left_rail_expanded_rect(i).contains(mouse) {
-                Some(i)
-            } else {
-                None
-            }
-        });
-        // 命中检测仍用窄矩形；绘制时悬停项加宽。
-        for (i, (glyph, name, on)) in items.iter().enumerate() {
-            let expanded = hover == Some(i) || *on;
-            let r = if expanded {
-                left_rail_expanded_rect(i)
-            } else {
-                left_rail_rect(i)
-            };
-            let bg = if *on {
-                Color::rgba(0.16, 0.30, 0.44, 0.78)
-            } else if expanded {
-                Color::rgba(
-                    crate::palette::HUD_PANEL.r,
-                    crate::palette::HUD_PANEL.g,
-                    crate::palette::HUD_PANEL.b,
-                    0.72,
-                )
-            } else {
-                Color::rgba(
-                    crate::palette::HUD_PANEL.r,
-                    crate::palette::HUD_PANEL.g,
-                    crate::palette::HUD_PANEL.b,
-                    0.42,
-                )
-            };
-            panel(draw, r, bg);
-            draw.fill_rect(
-                Rect::new(r.x, r.y, 2.0, r.h),
-                if *on || expanded { ACCENT } else { PANEL_EDGE },
-            );
-            label(draw, r.x + 11.0, r.y + 10.0, 16.0, TEXT_MAIN, glyph);
-            if expanded {
-                label(draw, r.x + 36.0, r.y + 12.0, 12.0, TEXT_DIM, name);
-            }
-        }
+        // 左上留给快捷栏；标题挪到热键下方。
+        label(draw, 20.0, 72.0, 14.0, TEXT_DIM, "Terraria");
     }
 
     fn paint_vitals(&self, draw: &mut DrawList, player: &crate::player::Player) {
-        let x = 72.0;
-        let y = self.screen_h - 118.0;
-        panel(draw, Rect::new(x, y, 280.0, 96.0), PANEL);
-        draw.fill_rect(Rect::new(x, y, 2.0, 96.0), ACCENT);
-        draw.fill_rect(
-            Rect::new(x + 2.0, y, 278.0, 2.0),
-            Color::rgba(PANEL_EDGE.r, PANEL_EDGE.g, PANEL_EDGE.b, 0.55),
-        );
+        // 原版式：右上生命心 + 右侧魔力星（约 20 HP / 心，20 MP / 星）。
+        let heart_n = ((player.max_hp / 20.0).ceil() as i32).clamp(1, 20);
+        let filled = (player.hp / 20.0).clamp(0.0, heart_n as f32);
+        let star_n = ((player.max_mp / 20.0).ceil() as i32).clamp(0, 20);
+        let star_f = (player.mp / 20.0).clamp(0.0, star_n as f32);
 
-        let cx = x + 40.0;
-        let cy = y + 48.0;
-        fill_disc(draw, cx, cy, 28.0, Color::rgb(0.12, 0.16, 0.24));
-        self.player_atlas.paint_icon(
-            draw,
-            Rect::new(cx - 23.0, cy - 28.0, 46.0, 46.0),
-        );
-        // 低血时头像环偏红。
-        if player.hp / player.max_hp < 0.35 {
-            fill_disc(draw, cx, cy, 29.0, Color::rgba(0.85, 0.2, 0.22, 0.35));
+        let right = self.screen_w - 16.0;
+        let top = 16.0;
+        let cols = 10i32;
+        let heart_sz = 22.0;
+        for i in 0..heart_n {
+            let col = i % cols;
+            let row = i / cols;
+            let x = right - (cols - col) as f32 * 26.0;
+            let y = top + row as f32 * 24.0;
+            let amt = (filled - i as f32).clamp(0.0, 1.0);
+            self.hud_chrome.paint_heart(draw, x, y, heart_sz, amt);
+        }
+        let mana_sz = 22.0;
+        for i in 0..star_n {
+            let x = right - 24.0;
+            let y = top + 56.0 + i as f32 * 22.0;
+            let amt = (star_f - i as f32).clamp(0.0, 1.0);
+            self.hud_chrome.paint_mana(draw, x, y, mana_sz, amt);
         }
 
-        label(draw, x + 78.0, y + 10.0, 14.0, TEXT_MAIN, "旅人");
-        label(draw, x + 78.0, y + 28.0, 11.0, TEXT_DIM, "人类 · 初航");
-
-        let bx = x + 78.0;
-        let bw = 180.0;
-        paint_bar(
+        // 铜币计数：右上生命心下方。
+        let coins = player.inv.get(ItemId::COPPER_COIN);
+        let coin_y = top + 52.0 + if star_n > 0 { 0.0 } else { 8.0 };
+        if let Some(view) = self.icon_atlas.view(ItemId::COPPER_COIN) {
+            draw.tex_rect(
+                view.tex,
+                Rect::new(right - 120.0, coin_y, 18.0, 18.0),
+                view.uv,
+                Color::rgba(1.0, 1.0, 1.0, 1.0),
+            );
+        } else {
+            draw.fill_rect(
+                Rect::new(right - 120.0, coin_y, 18.0, 18.0),
+                item_swatch(ItemId::COPPER_COIN),
+            );
+        }
+        label(
             draw,
-            bx,
-            y + 48.0,
-            bw,
-            10.0,
-            player.hp / player.max_hp,
-            Color::rgb(0.85, 0.28, 0.32),
-        );
-        paint_bar(
-            draw,
-            bx,
-            y + 62.0,
-            bw,
-            8.0,
-            player.mp / player.max_mp,
-            Color::rgb(0.35, 0.55, 0.95),
-        );
-        // 第三槽：护甲减伤比例（无独立耐力系统时对齐效果图三色条）。
-        paint_bar(
-            draw,
-            bx,
-            y + 74.0,
-            bw,
-            8.0,
-            player.defense().clamp(0.0, 1.0).max(0.08),
+            right - 98.0,
+            coin_y + 2.0,
+            13.0,
             Color::rgb(0.95, 0.78, 0.35),
+            &format!("{coins}"),
+        );
+    }
+
+    fn paint_minimap_chip(
+        &self,
+        draw: &mut DrawList,
+        player: &crate::player::Player,
+        world: &crate::world::World,
+    ) {
+        let w = 150.0;
+        let h = 64.0;
+        let x = 72.0;
+        let y = 48.0;
+        panel(
+            draw,
+            Rect::new(x, y, w, h),
+            Color::rgba(PANEL.r, PANEL.g, PANEL.b, 0.55),
+        );
+        let tx = wrap_tx(((player.x + crate::player::HIT_W * 0.5) / TILE).floor() as i32);
+        let ty = (player.y / TILE).floor() as i32;
+        let (hh, mm) = clock_from_day_t(self.day_t);
+        label(
+            draw,
+            x + 8.0,
+            y + 6.0,
+            12.0,
+            TEXT_DIM,
+            &format!("{}  {:02}:{:02}", world.biome_at_x(tx).name(), hh, mm),
         );
         label(
             draw,
-            bx + bw + 6.0,
-            y + 46.0,
-            10.0,
+            x + 8.0,
+            y + 24.0,
+            11.0,
             TEXT_DIM,
-            &format!("{:.0}/{:.0}", player.hp, player.max_hp),
+            &format!("X:{tx}  Y:{ty}"),
         );
+        let mx = x + 8.0;
+        let my = y + 40.0;
+        let mw = w - 16.0;
+        let mh = 18.0;
+        draw.fill_rect(Rect::new(mx, my, mw, mh), Color::rgb(0.04, 0.06, 0.09));
+        let scale = mw / WORLD_W as f32;
+        for wx in 0..WORLD_W {
+            let hgt = world.surface_at(wx);
+            let col_h = ((WORLD_H as f32 - hgt as f32) / WORLD_H as f32 * mh).clamp(1.0, mh);
+            let c = match world.biome_at_x(wx) {
+                tr_core::BiomeId::Meadow => Color::rgb(0.22, 0.42, 0.22),
+                tr_core::BiomeId::Forest => Color::rgb(0.10, 0.32, 0.16),
+                tr_core::BiomeId::Desert => Color::rgb(0.55, 0.42, 0.22),
+                tr_core::BiomeId::Tundra => Color::rgb(0.35, 0.48, 0.58),
+            };
+            draw.fill_rect(
+                Rect::new(mx + wx as f32 * scale, my + mh - col_h, scale.max(1.0), col_h),
+                c,
+            );
+        }
+        let px = mx + (tx as f32 / WORLD_W as f32) * mw;
+        draw.fill_rect(Rect::new(px - 1.0, my, 2.0, mh), Color::rgb(1.0, 0.85, 0.35));
     }
 
     fn paint_hotbar(&self, draw: &mut DrawList, player: &crate::player::Player) {
@@ -828,29 +693,7 @@ impl TerrariaApp {
         for i in 0..n {
             let x = base_x + i as f32 * (slot + gap);
             let selected = player.inv.hotbar_sel % HOTBAR_SLOTS == i;
-            draw.fill_rect(
-                Rect::new(x - 2.0, base_y - 2.0, slot + 4.0, slot + 4.0),
-                if selected {
-                    crate::palette::HUD_HOTBAR_RING
-                } else {
-                    crate::palette::HUD_HOTBAR_RING_IDLE
-                },
-            );
-            draw.fill_rect(
-                Rect::new(x, base_y, slot, slot),
-                if selected {
-                    crate::palette::HUD_HOTBAR_SELECTED
-                } else {
-                    crate::palette::HUD_HOTBAR_IDLE
-                },
-            );
-            if selected {
-                // 选中格内缘高光，强化焦点。
-                draw.fill_rect(
-                    Rect::new(x + 1.0, base_y + 1.0, slot - 2.0, 2.0),
-                    Color::rgba(0.85, 0.95, 1.0, 0.35),
-                );
-            }
+            self.hud_chrome.paint_slot(draw, x, base_y, slot, selected);
             if let Some(stack) = player.inv.hotbar[i].as_ref() {
                 let id = stack.id;
                 if let Some(view) = self.icon_atlas.view(id) {
@@ -891,156 +734,6 @@ impl TerrariaApp {
                 TEXT_DIM,
                 &format!("{key}"),
             );
-        }
-    }
-
-    fn paint_location_card(
-        &self,
-        draw: &mut DrawList,
-        player: &crate::player::Player,
-        world: &crate::world::World,
-    ) {
-        let w = 220.0;
-        let h = 148.0;
-        let x = self.screen_w - w - 16.0;
-        let y = 16.0;
-        panel(draw, Rect::new(x, y, w, h), PANEL);
-        draw.fill_rect(Rect::new(x, y, w, 2.0), PANEL_EDGE);
-
-        let tx = wrap_tx(((player.x + crate::player::HIT_W * 0.5) / TILE).floor() as i32);
-        let ty = (player.y / TILE).floor() as i32;
-        let surface = world.surface_at(tx);
-        let depth = if ty + 2 >= surface {
-            "地表"
-        } else if ty + 12 >= surface {
-            "浅层"
-        } else {
-            "地下"
-        };
-        let biome_id = world.biome_at_x(tx);
-        let biome = biome_id.name();
-        let (hh, mm) = clock_from_day_t(self.day_t);
-
-        label(draw, x + 12.0, y + 10.0, 16.0, TEXT_MAIN, biome);
-        label(
-            draw,
-            x + 12.0,
-            y + 32.0,
-            12.0,
-            TEXT_DIM,
-            &format!("{hh:02}:{mm:02}  ·  {depth}"),
-        );
-        label(
-            draw,
-            x + 12.0,
-            y + 50.0,
-            12.0,
-            TEXT_DIM,
-            &format!("X:{tx}  Y:{ty}"),
-        );
-
-        // 迷你地形条：按列群系上色，强化地标识别。
-        let mw = w - 24.0;
-        let mh = 56.0;
-        let mx = x + 12.0;
-        let my = y + 74.0;
-        draw.fill_rect(Rect::new(mx, my, mw, mh), Color::rgb(0.04, 0.06, 0.09));
-        let scale = mw / WORLD_W as f32;
-        for wx in 0..WORLD_W {
-            let hgt = world.surface_at(wx);
-            let col_h = ((WORLD_H as f32 - hgt as f32) / WORLD_H as f32 * mh).clamp(2.0, mh);
-            let c = match world.biome_at_x(wx) {
-                tr_core::BiomeId::Meadow => Color::rgb(0.22, 0.42, 0.22),
-                tr_core::BiomeId::Forest => Color::rgb(0.10, 0.32, 0.16),
-                tr_core::BiomeId::Desert => Color::rgb(0.55, 0.42, 0.22),
-                tr_core::BiomeId::Tundra => Color::rgb(0.35, 0.48, 0.58),
-            };
-            draw.fill_rect(
-                Rect::new(
-                    mx + wx as f32 * scale,
-                    my + mh - col_h,
-                    scale.max(1.0),
-                    col_h,
-                ),
-                c,
-            );
-        }
-        let (sx, _) = world.spawn_pos();
-        let stx = wrap_tx((sx / TILE).floor() as i32);
-        draw.fill_rect(
-            Rect::new(mx + stx as f32 * scale - 1.5, my + mh * 0.35, 4.0, 4.0),
-            Color::rgb(0.35, 0.75, 0.95),
-        );
-        let ptx = wrap_tx(((player.x) / TILE).floor() as i32);
-        draw.fill_rect(
-            Rect::new(mx + ptx as f32 * scale - 1.5, my + mh * 0.55, 4.0, 4.0),
-            Color::rgb(1.0, 0.95, 0.55),
-        );
-    }
-
-    fn paint_quest_card(&self, draw: &mut DrawList) {
-        let w = 220.0;
-        let x = self.screen_w - w - 16.0;
-        let y = 176.0;
-        let lines = self.objective.checklist();
-        let h = 52.0 + lines.len() as f32 * 22.0;
-        panel(draw, Rect::new(x, y, w, h), PANEL);
-        label(draw, x + 12.0, y + 10.0, 12.0, ACCENT, "当前任务");
-        label(
-            draw,
-            x + 12.0,
-            y + 28.0,
-            14.0,
-            TEXT_MAIN,
-            self.objective.quest_name(),
-        );
-        for (i, (text, done, current)) in lines.iter().enumerate() {
-            let ly = y + 52.0 + i as f32 * 22.0;
-            let mark = if *done {
-                "✓"
-            } else if *current {
-                "›"
-            } else {
-                "·"
-            };
-            let color = if *done {
-                Color::rgb(0.45, 0.75, 0.55)
-            } else if *current {
-                Color::rgb(0.95, 0.88, 0.55)
-            } else {
-                TEXT_DIM
-            };
-            label(draw, x + 12.0, ly, 12.0, color, &format!("{mark} {text}"));
-        }
-    }
-
-    fn paint_quick_actions(&self, draw: &mut DrawList) {
-        let items = [
-            ("B", "飞船", false),
-            ("M", "地图", self.map_open),
-            ("I", "物品", self.bag_open),
-        ];
-        for (i, (key, name, on)) in items.iter().enumerate() {
-            let r = quick_action_rect(self.screen_w, self.screen_h, i);
-            let bg = if *on {
-                Color::rgba(0.16, 0.30, 0.44, 0.78)
-            } else {
-                Color::rgba(PANEL.r, PANEL.g, PANEL.b, 0.52)
-            };
-            panel(draw, r, bg);
-            draw.fill_rect(
-                Rect::new(r.x, r.y, r.w, 2.0),
-                if *on { ACCENT } else { PANEL_EDGE },
-            );
-            label(
-                draw,
-                r.x + 18.0,
-                r.y + 8.0,
-                14.0,
-                if *on { TEXT_MAIN } else { ACCENT },
-                key,
-            );
-            label(draw, r.x + 10.0, r.y + 28.0, 11.0, TEXT_DIM, name);
         }
     }
 
@@ -1239,6 +932,77 @@ impl TerrariaApp {
         }
     }
 
+    pub(crate) fn paint_shop(&self, draw: &mut DrawList) {
+        let Some(player) = self.player.as_ref() else {
+            return;
+        };
+        let box_r = shop_panel_rect(self.screen_w);
+        panel(draw, box_r, PANEL);
+        draw.fill_rect(Rect::new(box_r.x, box_r.y, box_r.w, 2.0), PANEL_EDGE);
+        let coins = player.inv.get(ItemId::COPPER_COIN);
+        label(
+            draw,
+            box_r.x + 20.0,
+            box_r.y + 14.0,
+            18.0,
+            TEXT_MAIN,
+            "商人商店",
+        );
+        label(
+            draw,
+            box_r.x + 120.0,
+            box_r.y + 18.0,
+            12.0,
+            Color::rgb(0.95, 0.78, 0.35),
+            &format!("铜币 {coins} · 点击购买 · Esc"),
+        );
+        for (i, offer) in crate::shop::MERCHANT_OFFERS.iter().enumerate() {
+            let r = shop_row_rect(self.screen_w, i);
+            let can = coins >= offer.price;
+            draw.fill_rect(
+                r,
+                if can {
+                    Color::rgb(0.14, 0.26, 0.20)
+                } else {
+                    Color::rgb(0.20, 0.14, 0.14)
+                },
+            );
+            if let Some(view) = self.icon_atlas.view(offer.item) {
+                draw.tex_rect(
+                    view.tex,
+                    Rect::new(r.x + 6.0, r.y + 3.0, 28.0, 28.0),
+                    view.uv,
+                    Color::rgba(1.0, 1.0, 1.0, 1.0),
+                );
+            } else {
+                draw.fill_rect(
+                    Rect::new(r.x + 6.0, r.y + 3.0, 28.0, 28.0),
+                    item_swatch(offer.item),
+                );
+            }
+            label(
+                draw,
+                r.x + 42.0,
+                r.y + 8.0,
+                13.0,
+                TEXT_MAIN,
+                offer.label,
+            );
+            label(
+                draw,
+                r.x + r.w - 88.0,
+                r.y + 8.0,
+                13.0,
+                if can {
+                    Color::rgb(0.95, 0.78, 0.35)
+                } else {
+                    Color::rgb(0.75, 0.4, 0.4)
+                },
+                &format!("{} 铜", offer.price),
+            );
+        }
+    }
+
     pub(crate) fn paint_bag(&self, draw: &mut DrawList) {
         let Some(player) = self.player.as_ref() else {
             return;
@@ -1284,11 +1048,7 @@ impl TerrariaApp {
 
         for i in 0..bag_n {
             let slot = bag_slot_rect(self.screen_w, bag_n, i);
-            draw.fill_rect(
-                Rect::new(slot.x - 2.0, slot.y - 2.0, slot.w + 4.0, slot.h + 4.0),
-                Color::rgb(0.22, 0.26, 0.34),
-            );
-            draw.fill_rect(slot, Color::rgba(0.08, 0.10, 0.14, 0.95));
+            self.hud_chrome.paint_slot(draw, slot.x, slot.y, slot.w, false);
             if let Some(stack) = player.inv.bag.get(i).and_then(|s| s.as_ref()) {
                 let id = stack.id;
                 if let Some(view) = self.icon_atlas.view(id) {
@@ -1405,22 +1165,6 @@ impl TerrariaApp {
                 Rect::new(mx + x as f32 * scale_x, top, scale_x.max(1.0), col_h),
                 ground,
             );
-        }
-        for x in 0..WORLD_W {
-            for y in 0..WORLD_H {
-                if world.get(x, y) == tr_core::BlockId::WARP {
-                    draw.fill_rect(
-                        Rect::new(
-                            mx + x as f32 * scale_x - 2.0,
-                            my + y as f32 * scale_y - 2.0,
-                            5.0,
-                            5.0,
-                        ),
-                        Color::rgb(0.75, 0.35, 1.0),
-                    );
-                    break;
-                }
-            }
         }
         let (sx, sy) = world.spawn_pos();
         let stx = wrap_tx((sx / TILE).floor() as i32);

@@ -1,4 +1,4 @@
-//! XNB 版本 5 的 `Texture2D` 解码。只读内存，不落盘。
+//! XNB 版本 5 的 `Texture2D` / `SoundEffect` 解码。只读内存，不落盘。
 //!
 //! 压缩标志 `0x80` 的载荷按帧切块：首字节为 `0xFF` 时随后是大端帧长与块长，否则两字节是块长、帧长固定 32KiB。窗口 64KiB。
 
@@ -16,6 +16,16 @@ pub struct RgbaTexture {
     pub rgba: Vec<u8>,
 }
 
+/// 解码后的 PCM（交错 f32，约 -1..=1）。
+#[derive(Debug, Clone)]
+pub struct PcmSound {
+    /// 来源文件名，不含目录。
+    pub name: String,
+    pub sample_rate: u32,
+    pub channels: u16,
+    pub samples: Vec<f32>,
+}
+
 /// 从 XNB 字节解码第一级 `Texture2D`。失败返回可读原因。
 pub fn decode_texture_xnb(bytes: &[u8]) -> Result<RgbaTexture, String> {
     decode_texture_xnb_named(bytes, "texture.xnb")
@@ -31,6 +41,19 @@ pub fn decode_texture_file(path: &Path) -> Result<RgbaTexture, String> {
     let mut tex = decode_texture_xnb_named(&bytes, &name)?;
     tex.name = name;
     Ok(tex)
+}
+
+/// 从文件解码 `SoundEffect` XNB。
+pub fn decode_sound_file(path: &Path) -> Result<PcmSound, String> {
+    let name = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("sound.xnb")
+        .to_string();
+    let bytes = std::fs::read(path).map_err(|e| format!("无法读取 {name}：{e}"))?;
+    let mut snd = decode_sound_xnb_named(&bytes, &name)?;
+    snd.name = name;
+    Ok(snd)
 }
 
 /// 去掉 LZX，写成未压缩 XNB。已经未压缩的文件原样规范化头标志。
@@ -155,6 +178,91 @@ fn decode_texture_xnb_named(bytes: &[u8], name: &str) -> Result<RgbaTexture, Str
         height,
         rgba,
     })
+}
+
+fn decode_sound_xnb_named(bytes: &[u8], name: &str) -> Result<PcmSound, String> {
+    let body = read_xnb(bytes, name)?.body;
+    let mut cur = Cur { data: &body, pos: 0 };
+    let reader_count = cur.read_7bit()?;
+    if reader_count == 0 || reader_count > 64 {
+        return Err(format!("{name} 的类型读取器数量非法"));
+    }
+    let mut readers = Vec::with_capacity(reader_count as usize);
+    for _ in 0..reader_count {
+        readers.push(cur.read_string()?);
+        let _version = cur.read_i32()?;
+    }
+    let shared = cur.read_7bit()?;
+    if shared != 0 {
+        return Err(format!("{name} 含共享资源，当前只解码独立音效"));
+    }
+    let type_id = cur.read_7bit()?;
+    if type_id == 0 {
+        return Err(format!("{name} 主对象为空"));
+    }
+    let reader = readers
+        .get((type_id - 1) as usize)
+        .ok_or_else(|| format!("{name} 的类型编号越界"))?;
+    if !reader.contains("SoundEffectReader") {
+        return Err(format!("{name} 不是 SoundEffect"));
+    }
+
+    let fmt_len = cur.read_u32()? as usize;
+    if fmt_len < 16 || fmt_len > 128 {
+        return Err(format!("{name} 的 WAVEFORMATEX 长度非法：{fmt_len}"));
+    }
+    let fmt = cur.read_bytes(fmt_len)?;
+    let format_tag = u16::from_le_bytes(fmt[0..2].try_into().unwrap());
+    let channels = u16::from_le_bytes(fmt[2..4].try_into().unwrap());
+    let sample_rate = u32::from_le_bytes(fmt[4..8].try_into().unwrap());
+    let bits = u16::from_le_bytes(fmt[14..16].try_into().unwrap());
+    if format_tag != 1 {
+        return Err(format!("{name} 不是 PCM（format={format_tag}）"));
+    }
+    if channels == 0 || channels > 2 {
+        return Err(format!("{name} 声道数非法：{channels}"));
+    }
+    if sample_rate < 8000 || sample_rate > 192_000 {
+        return Err(format!("{name} 采样率非法：{sample_rate}"));
+    }
+    if bits != 8 && bits != 16 {
+        return Err(format!("{name} 位深非法：{bits}"));
+    }
+
+    let data_len = cur.read_u32()? as usize;
+    if data_len == 0 || data_len > 16 * 1024 * 1024 {
+        return Err(format!("{name} 波形长度非法：{data_len}"));
+    }
+    let raw = cur.read_bytes(data_len)?;
+    let samples = pcm_bytes_to_f32(raw, bits)?;
+    Ok(PcmSound {
+        name: name.to_string(),
+        sample_rate,
+        channels,
+        samples,
+    })
+}
+
+fn pcm_bytes_to_f32(raw: &[u8], bits: u16) -> Result<Vec<f32>, String> {
+    match bits {
+        8 => Ok(raw
+            .iter()
+            .map(|&b| (b as f32 - 128.0) / 128.0)
+            .collect()),
+        16 => {
+            if raw.len() % 2 != 0 {
+                return Err("16 位 PCM 字节数为奇数".into());
+            }
+            Ok(raw
+                .chunks_exact(2)
+                .map(|c| {
+                    let v = i16::from_le_bytes([c[0], c[1]]);
+                    v as f32 / 32768.0
+                })
+                .collect())
+        }
+        _ => Err(format!("不支持的位深 {bits}")),
+    }
 }
 
 fn decompress_lzx(src: &[u8], decompressed_size: usize) -> Result<Vec<u8>, String> {

@@ -170,14 +170,28 @@ pub fn boot_content(install: &Path) -> Result<ContentAssets, String> {
     );
     tr_core::install_builtin_fixture();
     let mut assets = ContentAssets::empty();
+    assets.install_root = Some(install.to_path_buf());
     assets.boot_frames = proof;
     assets.tile_sheets = index.tiles;
     assets.item_sheets = index.items;
+    assets.wall_sheets = index.walls;
     assets.npc_sheets = index.npcs;
     assets.player_sheets = index.players;
     let backdrop = images.join("Background_0.xnb");
     if backdrop.is_file() {
         assets.forest_background = Some(backdrop);
+    }
+    for (field, name) in [
+        (&mut assets.hud_heart, "Heart.xnb"),
+        (&mut assets.hud_mana, "Mana.xnb"),
+        (&mut assets.hud_inv_back, "Inventory_Back.xnb"),
+    ] {
+        let p = images.join(name);
+        if p.is_file() {
+            *field = Some(p);
+        } else {
+            tracing::warn!(name, "缺少 HUD 铬件贴图");
+        }
     }
     Ok(assets)
 }
@@ -203,12 +217,22 @@ pub struct ContentAssets {
     pub tile_sheets: HashMap<u32, PathBuf>,
     /// `Item_{id}.xnb` 路径。键是文件名编号，不是夹具物品 ID。
     pub item_sheets: HashMap<u32, PathBuf>,
+    /// `Wall_{id}.xnb` 路径。键是文件名编号，不是夹具墙 ID。
+    pub wall_sheets: HashMap<u32, PathBuf>,
     /// `NPC_{id}.xnb` 路径。键是文件名编号。
     pub npc_sheets: HashMap<u32, PathBuf>,
     /// `Player_*.xnb` 路径。
     pub player_sheets: Vec<PathBuf>,
     /// 森林远景。正版 `Background_0.xnb`。
     pub forest_background: Option<PathBuf>,
+    /// 生命心。正版 `Heart.xnb`。
+    pub hud_heart: Option<PathBuf>,
+    /// 魔力星。正版 `Mana.xnb`。
+    pub hud_mana: Option<PathBuf>,
+    /// 快捷栏 / 背包槽底。正版 `Inventory_Back.xnb`。
+    pub hud_inv_back: Option<PathBuf>,
+    /// 正版安装根（音效等相对路径）。
+    pub install_root: Option<PathBuf>,
 }
 
 impl ContentAssets {

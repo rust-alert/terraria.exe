@@ -75,7 +75,8 @@ impl PlayerAtlas {
             .map(std::path::PathBuf::as_path)
             .filter(|p| {
                 let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                name.starts_with("Player_0_") || name == "Player_Hair_1.xnb"
+                // 经典竖条图层：`Player_0_0`…眼睛/头/躯干等；排除宽图与短条。
+                name.starts_with("Player_0_") && !name.contains("_13") && !name.contains("_15")
             })
             .collect();
         paths.sort_by_key(|p| player_layer_order(p));
@@ -83,7 +84,8 @@ impl PlayerAtlas {
             let Ok(tex) = crate::xnb::decode_texture_file(path) else {
                 continue;
             };
-            if tex.width != 40 || tex.height < 56 {
+            // 正版默认体型条：宽 40，高约 1118（约 20×56 帧）。
+            if tex.width != 40 || tex.height < 1000 {
                 continue;
             }
             match draw.create_texture(tex.width, tex.height, tex.rgba) {
