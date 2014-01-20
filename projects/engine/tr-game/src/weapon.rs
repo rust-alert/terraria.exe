@@ -158,9 +158,7 @@ pub fn update_projectiles(
                     let ecy = ey + eh * 0.5;
                     let etx = wrap_tx((ecx / TILE).floor() as i32);
                     let ety = (ecy / TILE).floor() as i32;
-                    world.spawn_drop_at_tile(etx, ety, ItemId::GEL, 2);
-                    world.spawn_drop_at_tile(etx, ety, ItemId::SCRAP, 1);
-                    crate::fx::burst_gel(dust, ecx, ecy);
+                    e.drop_loot(world, dust, ecx, ecy, etx, ety);
                     kill_msg = Some(format!("击杀（{} −{actual:.0}）", p.dtype.name()));
                 } else {
                     kill_msg = Some(format!("{} −{actual:.0}", p.dtype.name()));
