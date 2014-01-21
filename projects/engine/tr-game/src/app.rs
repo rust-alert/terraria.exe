@@ -3,17 +3,20 @@
 use spark_audio::AudioBus;
 use spark_input::Key;
 use spark_renderer::{DrawList, FrameCtx, GameHost};
-use tr_core::{ItemId, RaceId};
+use tr_core::ItemId;
 
 use crate::content_boot::ContentAssets;
 use crate::proof::ProofGpu;
 use crate::enemy::{Enemy, spawn_surface_slimes};
 use crate::fx::{DamageFloater, DustParticle};
+use crate::housing::HouseSlot;
+use crate::hud_chrome::HudChrome;
 use crate::icons::IconAtlas;
-use crate::objective::Objective;
+use crate::npc::{NpcAtlas, TownNpc, spawn_guide};
 use crate::player::{ItemStack, Player, PlayerAtlas};
-use crate::portal::PortalState;
+use crate::sfx::SfxBank;
 use crate::sky::SkyAtlas;
+use crate::trees::TreeAtlas;
 use crate::tiles::TileAtlas;
 use crate::weapon::Projectile;
 use crate::world::World;
@@ -29,7 +32,6 @@ pub(crate) enum Screen {
 pub struct TerrariaApp {
     pub(crate) screen: Screen,
     pub(crate) exit: bool,
-    pub(crate) race: RaceId,
     pub(crate) world: Option<World>,
     pub(crate) player: Option<Player>,
     pub(crate) cam_x: f32,
@@ -46,27 +48,30 @@ pub struct TerrariaApp {
     /// 手搓 / 工作台面板。
     pub(crate) craft_open: bool,
     pub(crate) enemies: Vec<Enemy>,
+    /// 城镇 NPC（向导等）。
+    pub(crate) town_npcs: Vec<TownNpc>,
+    /// 已登记合格房屋。
+    pub(crate) houses: Vec<HouseSlot>,
+    /// 房屋高亮剩余时间（秒）。
+    pub(crate) house_flash_t: f32,
     /// 世界日时（秒），周期约 180s。
     pub(crate) day_t: f32,
-    /// 是否已发现过裂痕锚（叙事提示一次）。
-    pub(crate) seen_warp: bool,
-    /// 是否成功传送过至少一次。
-    pub(crate) warped_once: bool,
     /// 是否已睡过一夜或熬过破晓（住所循环）。
     pub(crate) survived_night: bool,
     /// 本周期是否已提示「入夜」。
     pub(crate) night_warned: bool,
     /// 黑暗压力累计（秒），靠近光源时衰减。
     pub(crate) dark_stress: f32,
-    pub(crate) objective: Objective,
     /// I 键背包面板。
     pub(crate) bag_open: bool,
+    /// 商人商店面板。
+    pub(crate) shop_open: bool,
     /// M 键世界地图面板。
     pub(crate) map_open: bool,
     /// 程序化提示音（设备不可用时静默）。
     pub(crate) audio: AudioBus,
-    /// 裂痕传送门会话状态。
-    pub(crate) portal: PortalState,
+    /// 正版音效库。
+    pub(crate) sfx: SfxBank,
     /// 打开的木箱格坐标。
     pub(crate) chest_open: Option<(i32, i32)>,
     /// 玩家投射物。
@@ -75,12 +80,18 @@ pub struct TerrariaApp {
     pub(crate) debug_hud: bool,
     /// HUD 热键图标图集（程序化占位）。
     pub(crate) icon_atlas: IconAtlas,
+    /// 正版 HUD 铬件（心 / 魔力 / 槽底）。
+    pub(crate) hud_chrome: HudChrome,
     /// 世界瓦片图集。
     pub(crate) tile_atlas: TileAtlas,
     /// 天空视差贴图层（PNG 优先）。
     pub(crate) sky_atlas: SkyAtlas,
+    /// 正版森林树冠 / 侧枝。
+    pub(crate) tree_atlas: TreeAtlas,
     /// 玩家像素条带。
     pub(crate) player_atlas: PlayerAtlas,
+    /// 城镇 NPC 图集。
+    pub(crate) npc_atlas: NpcAtlas,
     /// 伤害飘字。
     pub(crate) damage_fx: Vec<DamageFloater>,
     /// 落地 / 挖掘尘粒。
@@ -98,7 +109,6 @@ impl TerrariaApp {
         Self {
             screen: Screen::Title,
             exit: false,
-            race: RaceId::HUMAN,
             world: None,
             player: None,
             cam_x: 0.0,
@@ -114,24 +124,28 @@ impl TerrariaApp {
             status_acc: 0.0,
             craft_open: false,
             enemies: Vec::new(),
+            town_npcs: Vec::new(),
+            houses: Vec::new(),
+            house_flash_t: 0.0,
             day_t: 40.0,
-            seen_warp: false,
-            warped_once: false,
             survived_night: false,
             night_warned: false,
             dark_stress: 0.0,
-            objective: Objective::GatherWood,
             bag_open: false,
+            shop_open: false,
             map_open: false,
             audio: AudioBus::try_open(),
-            portal: PortalState::default(),
+            sfx: SfxBank::new(),
             chest_open: None,
             projectiles: Vec::new(),
             debug_hud: false,
             icon_atlas: IconAtlas::new(),
+            hud_chrome: HudChrome::new(),
             tile_atlas: TileAtlas::new(),
             sky_atlas: SkyAtlas::new(),
+            tree_atlas: TreeAtlas::new(),
             player_atlas: PlayerAtlas::new(),
+            npc_atlas: NpcAtlas::new(),
             damage_fx: Vec::new(),
             dust_fx: Vec::new(),
             content_assets: ContentAssets::empty(),
@@ -168,23 +182,25 @@ impl TerrariaApp {
         self.cam_y = sy - 360.0;
         self.world = Some(world);
         self.enemies = enemies;
+        self.town_npcs = vec![spawn_guide(self.world.as_ref().unwrap())];
+        self.houses.clear();
+        self.house_flash_t = 0.0;
         self.craft_open = false;
         self.bag_open = false;
+        self.shop_open = false;
         self.map_open = false;
-        self.seen_warp = false;
-        self.warped_once = false;
         self.survived_night = false;
         self.night_warned = false;
         self.dark_stress = 0.0;
-        self.objective = Objective::GatherWood;
-        self.portal = PortalState::default();
         self.chest_open = None;
         self.cursor_stack = None;
         self.projectiles.clear();
         self.damage_fx.clear();
         self.dust_fx.clear();
         self.screen = Screen::Playing;
-        self.set_toast("苏醒。先砍树取木，靠近逃生舱按 E 休整，再造工作台与木镐。");
+        self.set_toast(
+            "向导在附近。工作台做木墙，封闭房间铺墙+火把+床，按 H 登记房屋。",
+        );
         tracing::info!(x = sx, y = sy, n_enemy = self.enemies.len(), "进入地表");
     }
 
@@ -218,9 +234,16 @@ impl GameHost for TerrariaApp {
             Screen::NewGame => self.paint_new_game(draw),
             Screen::Playing => {
                 self.icon_atlas.ensure(draw, &self.content_assets);
+                self.hud_chrome.ensure(draw, &self.content_assets);
                 self.tile_atlas.ensure(draw, &self.content_assets);
                 self.sky_atlas.ensure(draw, &self.content_assets);
+                self.tree_atlas
+                    .ensure(draw, self.content_assets.install_root.as_deref());
                 self.player_atlas.ensure(draw, &self.content_assets);
+                self.npc_atlas.ensure(draw, &self.content_assets);
+                if let Some(root) = self.content_assets.install_root.as_ref() {
+                    self.sfx.ensure(root);
+                }
                 draw.begin_world();
                 self.draw_world(draw);
                 draw.begin_hud();
@@ -231,9 +254,16 @@ impl GameHost for TerrariaApp {
             }
             Screen::Pause => {
                 self.icon_atlas.ensure(draw, &self.content_assets);
+                self.hud_chrome.ensure(draw, &self.content_assets);
                 self.tile_atlas.ensure(draw, &self.content_assets);
                 self.sky_atlas.ensure(draw, &self.content_assets);
+                self.tree_atlas
+                    .ensure(draw, self.content_assets.install_root.as_deref());
                 self.player_atlas.ensure(draw, &self.content_assets);
+                self.npc_atlas.ensure(draw, &self.content_assets);
+                if let Some(root) = self.content_assets.install_root.as_ref() {
+                    self.sfx.ensure(root);
+                }
                 draw.begin_world();
                 self.draw_world(draw);
                 draw.begin_hud();

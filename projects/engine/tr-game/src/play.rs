@@ -7,7 +7,6 @@ use tr_core::BlockId;
 
 use crate::enemy::{Enemy, update_enemies};
 use crate::player::Player;
-use crate::portal::{self, PortalTick};
 use crate::save::{SessionExtra, load_session, save_session};
 use crate::sfx;
 use crate::world::{TILE, WORLD_H, World, wrap_delta_x, wrap_tx, wrap_xf};
@@ -21,8 +20,8 @@ impl TerrariaApp {
         }
 
         if frame.input.key_pressed(Key::Escape) {
-            if self.portal.menu_open {
-                self.portal.close_menu();
+            if self.shop_open {
+                self.shop_open = false;
             } else if self.chest_open.is_some() {
                 self.chest_open = None;
                 self.flush_cursor_to_inv();
@@ -46,11 +45,31 @@ impl TerrariaApp {
             if self.craft_open {
                 self.bag_open = false;
                 self.map_open = false;
+                self.shop_open = false;
                 self.flush_cursor_to_inv();
             }
         }
         if frame.input.key_pressed(Key::I) {
             self.toggle_bag();
+        }
+        if frame.input.key_pressed(Key::H) {
+            if let (Some(world), Some(player)) = (self.world.as_ref(), self.player.as_ref()) {
+                let (px, py, pw, ph) = player.hitbox();
+                let msg = crate::housing::try_register_near(
+                    world,
+                    &mut self.houses,
+                    px + pw * 0.5,
+                    py + ph * 0.5,
+                );
+                self.house_flash_t = 2.5;
+                if let Some(assign) =
+                    crate::npc::assign_homes(world, &mut self.houses, &mut self.town_npcs)
+                {
+                    self.set_toast(format!("{msg} · {assign}"));
+                } else {
+                    self.set_toast(msg);
+                }
+            }
         }
         if frame.input.key_pressed(Key::M) {
             self.toggle_map();
@@ -60,7 +79,7 @@ impl TerrariaApp {
         }
 
         // 快捷栏 1-9 / 0；制作面板改点选，不再抢数字键。
-        if !self.bag_open && !self.portal.menu_open {
+        if !self.bag_open && !self.shop_open {
             for (i, key) in [
                 Key::Digit1,
                 Key::Digit2,
@@ -85,7 +104,7 @@ impl TerrariaApp {
         }
 
         // 滚轮切快捷栏（制作/传送/箱子打开时不切，避免误触）。
-        if !self.craft_open && !self.bag_open && !self.portal.menu_open && self.chest_open.is_none()
+        if !self.craft_open && !self.bag_open && !self.shop_open && self.chest_open.is_none()
         {
             let wheel = frame.input.wheel();
             if wheel.abs() > 0.01 {
@@ -107,10 +126,7 @@ impl TerrariaApp {
             if let (Some(world), Some(player)) = (self.world.as_ref(), self.player.as_ref()) {
                 let extra = SessionExtra {
                     day_t: self.day_t,
-                    seen_warp: self.seen_warp,
-                    warped_once: self.warped_once,
                     survived_night: self.survived_night,
-                    objective: self.objective,
                 };
                 match save_session(world, player, &self.enemies, extra) {
                     Ok(p) => self.set_toast(format!("已存档 {}", p.display())),
@@ -122,18 +138,12 @@ impl TerrariaApp {
             if let (Some(world), Some(player)) = (self.world.as_mut(), self.player.as_mut()) {
                 let mut extra = SessionExtra {
                     day_t: self.day_t,
-                    seen_warp: self.seen_warp,
-                    warped_once: self.warped_once,
                     survived_night: self.survived_night,
-                    objective: self.objective,
                 };
                 match load_session(world, player, &mut self.enemies, &mut extra) {
                     Ok(()) => {
                         self.day_t = extra.day_t;
-                        self.seen_warp = extra.seen_warp;
-                        self.warped_once = extra.warped_once;
                         self.survived_night = extra.survived_night;
-                        self.objective = extra.objective;
                         self.set_toast("读档成功");
                     }
                     Err(e) => self.set_toast(format!("读档失败：{e}")),
@@ -171,6 +181,9 @@ impl TerrariaApp {
             };
 
             player.update(world, frame.input, frame.dt);
+            if self.house_flash_t > 0.0 {
+                self.house_flash_t = (self.house_flash_t - frame.dt).max(0.0);
+            }
             if player.just_landed {
                 let impact = 0.4 + (player.vx.abs() * 0.002).min(0.45);
                 crate::fx::burst_dust(
@@ -194,9 +207,17 @@ impl TerrariaApp {
             world.tick_fluids(2);
             let night_cap = if night > 0.85 { 16 } else { 12 };
             if night > 0.55 && self.enemies.len() < night_cap {
-                maybe_spawn_night_slime(world, &mut self.enemies, player, night);
+                maybe_spawn_night_enemy(world, &mut self.enemies, player, night);
             }
-            update_enemies(world, &mut self.enemies, player, frame.dt, night);
+            update_enemies(
+                world,
+                &mut self.enemies,
+                player,
+                frame.dt,
+                night,
+                &self.sfx,
+                &self.audio,
+            );
             // 深夜远离光源：缓慢掉血，逼出火把与住所。
             if night > 0.7 {
                 if near_light(world, player) {
@@ -232,11 +253,15 @@ impl TerrariaApp {
                 toast = Some(if player.home_spawn.is_some() {
                     "你在床边醒来……".into()
                 } else {
-                    "你在逃生舱旁醒来……".into()
+                    "你在出生点醒来……".into()
                 });
             }
             if let Some(msg) = player.pickup_nearby(world) {
-                sfx::pickup(&self.audio);
+                if msg.contains("铜币") {
+                    sfx::coins(&self.sfx, &self.audio);
+                } else {
+                    sfx::pickup(&self.sfx, &self.audio);
+                }
                 toast = Some(msg);
             }
 
@@ -245,15 +270,48 @@ impl TerrariaApp {
             let (px, py, pw, ph) = player.hitbox();
             let chest_here = world.near_chest(px, py, pw, ph);
             let bed_here = world.near_bed(px, py, pw, ph);
-            let pod_here = near_tile(world, player, BlockId::POD, 3);
-            let warp_here = near_tile(world, player, BlockId::WARP, 3);
             let station_here =
                 world.near_workbench(px, py, pw, ph) || world.near_furnace(px, py, pw, ph);
-            let mut toggle_portal = false;
-            if e_pressed && self.portal.menu_open {
-                toggle_portal = true;
-            } else if e_pressed {
-                if let Some(pos) = chest_here {
+            let guide_i = self
+                .town_npcs
+                .iter()
+                .position(|n| n.near_player(px, py, pw, ph));
+            if e_pressed {
+                if let Some(i) = guide_i {
+                    let kind = self.town_npcs[i].kind;
+                    if kind == crate::npc::TownKind::Merchant {
+                        self.shop_open = !self.shop_open;
+                        if self.shop_open {
+                            self.craft_open = false;
+                            self.bag_open = false;
+                            self.map_open = false;
+                            self.chest_open = None;
+                            if let Some(left) = crate::container::absorb_cursor(
+                                &mut player.inv,
+                                &mut self.cursor_stack,
+                            ) {
+                                let tx = wrap_tx(
+                                    ((player.x + crate::player::HIT_W * 0.5) / TILE).floor()
+                                        as i32,
+                                );
+                                let ty = ((player.y + crate::player::HIT_H * 0.5) / TILE).floor()
+                                    as i32;
+                                world.spawn_drop_at_tile(tx, ty, left.id, left.count);
+                            }
+                        }
+                        sfx::chat(&self.sfx, &self.audio);
+                        toast = Some(if self.shop_open {
+                            "商人商店 · 点击购买 · Esc 关闭".into()
+                        } else {
+                            "已关闭商店".into()
+                        });
+                    } else {
+                        let line = self.town_npcs[i].talk_next();
+                        let name = kind.label();
+                        sfx::chat(&self.sfx, &self.audio);
+                        toast = Some(format!("{name}：{line}"));
+                    }
+                } else if let Some(pos) = chest_here {
                     if self.chest_open == Some(pos) {
                         self.chest_open = None;
                         flush_cursor = true;
@@ -262,6 +320,7 @@ impl TerrariaApp {
                         self.craft_open = false;
                         self.bag_open = true;
                         self.map_open = false;
+                        self.shop_open = false;
                         toast = Some("木箱 · 拖放物品，Shift 快移".into());
                     }
                 } else if bed_here.is_some() {
@@ -271,110 +330,18 @@ impl TerrariaApp {
                         self.survived_night = true;
                     }
                     toast = Some(msg);
-                } else if pod_here {
-                    let night = night_factor(self.day_t);
-                    if night > 0.35 {
-                        let (msg, slept) = try_rest(night, false, &mut self.day_t, player, world);
-                        if slept {
-                            self.survived_night = true;
-                        }
-                        toast = Some(msg);
-                    } else {
-                        player.hp = (player.hp + 25.0).min(player.max_hp);
-                        toast = Some("舱内余温：生命回复".into());
-                    }
-                } else if warp_here {
-                    toggle_portal = true;
-                    self.chest_open = None;
-                    self.craft_open = false;
-                    self.bag_open = false;
                 } else if station_here {
                     self.craft_open = !self.craft_open;
                     if self.craft_open {
                         self.bag_open = false;
                         self.chest_open = None;
+                        self.shop_open = false;
                         toast = Some("制作台已打开".into());
                     } else {
                         toast = Some("已关闭制作".into());
                     }
                 } else {
                     toast = Some("附近没有可交互的设施".into());
-                }
-            }
-
-            // 裂痕传送：站入锚自动折叠；靠近锚按 E 打开可选目标。
-            let gates = portal::collect_gates(world);
-            let mut pin = portal::PortalInput {
-                toggle_menu: toggle_portal,
-                confirm: frame.input.key_pressed(Key::Enter) && self.chest_open.is_none(),
-                cancel: false, // Escape 已在帧头处理
-                cycle: 0,
-                pick_gate: None,
-            };
-            if self.portal.menu_open {
-                if frame.input.key_pressed(Key::Up) || frame.input.key_pressed(Key::W) {
-                    pin.cycle = -1;
-                } else if frame.input.key_pressed(Key::Down) || frame.input.key_pressed(Key::S) {
-                    pin.cycle = 1;
-                }
-                // 鼠标点选列表行
-                let (mx, my) = frame.input.mouse_pos();
-                let panel_x = self.screen_w * 0.5 - 200.0;
-                let panel_y = 100.0;
-                let here = portal::gate_index_at(player, world, &gates);
-                let mut row = 0usize;
-                for (i, _) in gates.iter().enumerate() {
-                    if Some(i) == here {
-                        continue;
-                    }
-                    let row_rect = Rect::new(
-                        panel_x + 16.0,
-                        panel_y + 52.0 + row as f32 * 40.0,
-                        368.0,
-                        36.0,
-                    );
-                    if frame.input.mouse_pressed(MouseBtn::Left)
-                        && row_rect.contains(Vec2::new(mx, my))
-                    {
-                        pin.pick_gate = Some(i);
-                        pin.confirm = true;
-                    }
-                    row += 1;
-                }
-            }
-            match portal::tick_portals(&mut self.portal, player, world, frame.dt, pin) {
-                PortalTick::Warped { dest, via_auto } => {
-                    self.warped_once = true;
-                    sfx::warp(&self.audio);
-                    let kind = if via_auto { "自动" } else { "选定" };
-                    toast = Some(format!("{kind}折叠 → {dest}"));
-                }
-                PortalTick::NeedPeer => {
-                    if toggle_portal {
-                        toast = Some("需要至少两扇门（舱 + 裂痕锚）".into());
-                    }
-                }
-                PortalTick::Away => {
-                    if toggle_portal {
-                        toast = Some("靠近裂痕锚后按 E 打开传送列表".into());
-                    }
-                }
-                PortalTick::AutoCharging
-                | PortalTick::MenuOpen
-                | PortalTick::Cooling
-                | PortalTick::Idle => {}
-            }
-
-            // 首次靠近裂痕锚：T0 叙事钩子
-            if !self.seen_warp {
-                let (px, py, pw, ph) = player.hitbox();
-                let tx = wrap_tx(((px + pw * 0.5) / TILE).floor() as i32);
-                let ty = ((py + ph * 0.5) / TILE).floor() as i32;
-                let near_anchor = (-3..=3)
-                    .any(|dy| (-3..=3).any(|dx| world.get(tx + dx, ty + dy) == BlockId::WARP));
-                if near_anchor {
-                    self.seen_warp = true;
-                    toast = Some("裂痕门：站入会自动折叠；靠近后按 E 打开列表自选目标。".into());
                 }
             }
 
@@ -405,7 +372,7 @@ impl TerrariaApp {
                     let aim_y = my + self.cam_y;
                     if let Some(msg) = crate::grapple::try_use(player, aim_x, aim_y) {
                         if msg.contains("抛出") {
-                            sfx::place(&self.audio);
+                            sfx::place(&self.sfx, &self.audio);
                         }
                         toast = Some(msg);
                     }
@@ -418,7 +385,7 @@ impl TerrariaApp {
             if !over_hud
                 && !self.craft_open
                 && !self.bag_open
-                && !self.portal.menu_open
+                && !self.shop_open
                 && self.chest_open.is_none()
             {
                 let pressed = frame.input.mouse_pressed(MouseBtn::Left);
@@ -440,13 +407,19 @@ impl TerrariaApp {
                         pressed,
                         held,
                     ) {
-                        apply_primary(&self.audio, &mut self.dust_fx, &mut toast, out);
+                        apply_primary(
+                            &self.sfx,
+                            &self.audio,
+                            &mut self.dust_fx,
+                            &mut toast,
+                            out,
+                        );
                     }
                 }
                 if frame.input.mouse_pressed(MouseBtn::Right) {
                     if let Some(msg) = crate::use_item::secondary_use(player, world, tx, ty) {
                         if msg.ends_with("墙") {
-                            sfx::place(&self.audio);
+                            sfx::place(&self.sfx, &self.audio);
                         }
                         toast = Some(msg);
                     }
@@ -463,20 +436,6 @@ impl TerrariaApp {
             self.cam_y = self.cam_y.clamp(0.0, max_y.max(0.0));
         }
 
-        if let (Some(world), Some(player)) = (self.world.as_ref(), self.player.as_ref()) {
-            let next = self.objective.advance(
-                player,
-                world,
-                self.warped_once,
-                self.seen_warp,
-                self.survived_night,
-            );
-            if next != self.objective {
-                self.objective = next;
-                sfx::objective(&self.audio);
-                toast = Some(format!("目标：{}", next.title()));
-            }
-        }
 
         if let Some(msg) = toast {
             self.set_toast(msg);
@@ -491,20 +450,6 @@ impl TerrariaApp {
             self.write_status();
         }
     }
-}
-
-fn near_tile(world: &World, player: &Player, id: BlockId, r: i32) -> bool {
-    let (px, py, pw, ph) = player.hitbox();
-    let tx = wrap_tx(((px + pw * 0.5) / TILE).floor() as i32);
-    let ty = ((py + ph * 0.5) / TILE).floor() as i32;
-    for dy in -r..=r {
-        for dx in -r..=r {
-            if world.get(tx + dx, ty + dy) == id {
-                return true;
-            }
-        }
-    }
-    false
 }
 
 fn try_rest(
@@ -548,6 +493,7 @@ fn night_factor(day_t: f32) -> f32 {
 }
 
 fn apply_primary(
+    bank: &crate::sfx::SfxBank,
     audio: &spark_audio::AudioBus,
     dust: &mut Vec<crate::fx::DustParticle>,
     toast: &mut Option<String>,
@@ -557,7 +503,7 @@ fn apply_primary(
     match out {
         PrimaryOutcome::Eat(msg) => {
             if msg.starts_with("食用") {
-                sfx::pickup(audio);
+                sfx::pickup(bank, audio);
             }
             *toast = Some(msg);
         }
@@ -568,7 +514,7 @@ fn apply_primary(
                 && !msg.starts_with("需")
                 && msg != "不可放置"
             {
-                sfx::place(audio);
+                sfx::place(bank, audio);
                 crate::fx::burst_dust(
                     dust,
                     tx as f32 * TILE + TILE * 0.5,
@@ -579,41 +525,44 @@ fn apply_primary(
             *toast = Some(format!("放置 {msg}"));
         }
         PrimaryOutcome::Dig { msg, tx, ty } => {
-            cue_dig_fx(audio, dust, tx, ty, &msg);
+            cue_dig_fx(bank, audio, dust, tx, ty, &msg);
             *toast = Some(msg);
         }
         PrimaryOutcome::Melee(msg) => {
-            sfx::melee_hit(audio);
+            sfx::melee_hit(bank, audio);
             *toast = Some(msg);
         }
         PrimaryOutcome::Ranged(msg) => {
             if msg.contains('−') || msg.contains("远程") || msg.contains("魔力") {
-                sfx::melee_hit(audio);
+                sfx::melee_hit(bank, audio);
             }
             *toast = Some(msg);
         }
     }
 }
 
-fn cue_dig(audio: &spark_audio::AudioBus, msg: &str) {
+fn cue_dig(bank: &crate::sfx::SfxBank, audio: &spark_audio::AudioBus, msg: &str) {
     if msg == "太远了" {
         return;
     }
     if msg.contains("掉落") || msg.contains("碎了") {
-        sfx::dig_break(audio);
+        sfx::dig_break(bank, audio);
+    } else if msg.contains("石") || msg.contains("矿") {
+        sfx::dig_tink(bank, audio);
     } else {
-        sfx::dig_chip(audio);
+        sfx::dig_chip(bank, audio);
     }
 }
 
 fn cue_dig_fx(
+    bank: &crate::sfx::SfxBank,
     audio: &spark_audio::AudioBus,
     dust: &mut Vec<crate::fx::DustParticle>,
     tx: i32,
     ty: i32,
     msg: &str,
 ) {
-    cue_dig(audio, msg);
+    cue_dig(bank, audio, msg);
     if msg == "太远了" {
         return;
     }
@@ -641,7 +590,7 @@ fn near_light(world: &World, player: &Player) -> bool {
     false
 }
 
-fn maybe_spawn_night_slime(world: &World, enemies: &mut Vec<Enemy>, player: &Player, night: f32) {
+fn maybe_spawn_night_enemy(world: &World, enemies: &mut Vec<Enemy>, player: &Player, night: f32) {
     let (px, _, _, _) = player.hitbox();
     let side = if ((px * 0.01) as i32).rem_euclid(2) == 0 {
         10
@@ -657,8 +606,23 @@ fn maybe_spawn_night_slime(world: &World, enemies: &mut Vec<Enemy>, player: &Pla
         return;
     }
     let sh = world.surface_at(tx);
-    enemies.push(Enemy::slime(
-        tx as f32 * TILE + 2.0,
-        sh as f32 * TILE - TILE * 0.7,
-    ));
+    let roll = (world.seed ^ (tx as u64).wrapping_mul(19)) % 5;
+    // 入夜后空中刷恶魔眼，深夜地面刷僵尸，其余史莱姆。
+    if night > 0.58 && roll < 2 {
+        let air = 4 + (roll as i32);
+        enemies.push(Enemy::demon_eye(
+            tx as f32 * TILE + 2.0,
+            sh as f32 * TILE - TILE * air as f32,
+        ));
+    } else if night > 0.72 {
+        enemies.push(Enemy::zombie(
+            tx as f32 * TILE + 2.0,
+            sh as f32 * TILE - TILE * (42.0 / 16.0),
+        ));
+    } else {
+        enemies.push(Enemy::slime(
+            tx as f32 * TILE + 2.0,
+            sh as f32 * TILE - TILE * 0.7,
+        ));
+    }
 }
