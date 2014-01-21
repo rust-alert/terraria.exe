@@ -157,7 +157,6 @@ pub fn paint_sky_parallax(
         }
     } else {
         paint_stars(draw, sw, sh, px_far, py_far, dayness);
-        paint_nebulae(draw, sw, sh, px_far, py_far, dayness);
     }
 
     if let Some(layer) = atlas.body {
@@ -191,7 +190,6 @@ pub fn paint_sky_parallax(
         );
     } else {
         paint_distant_ridges(draw, sw, sh, px_mid, py_mid, dayness, band.ridge);
-        paint_floating_islands(draw, sw, sh, px_mid, py_mid);
     }
 
     if let Some(layer) = atlas.clouds {
@@ -305,111 +303,34 @@ fn paint_stars(draw: &mut DrawList, sw: f32, sh: f32, px: f32, py: f32, dayness:
     }
 }
 
-fn paint_nebulae(draw: &mut DrawList, sw: f32, sh: f32, px: f32, py: f32, dayness: f32) {
-    let night = (1.0 - dayness).clamp(0.0, 1.0);
-    if night < 0.12 {
-        return;
-    }
-    let a = 0.08 + 0.18 * night;
-    let bands = [
-        (
-            0.18f32,
-            0.12f32,
-            0.55f32,
-            0.22f32,
-            (0.55f32, 0.28f32, 0.72f32),
-        ),
-        (0.62, 0.08, 0.4, 0.18, (0.28, 0.42, 0.75)),
-        (0.35, 0.22, 0.5, 0.14, (0.72, 0.35, 0.48)),
-    ];
-    for (cx, cy, w, h, rgb) in bands {
-        let x = sw * cx + px * 0.2;
-        let y = sh * cy + py;
-        draw.fill_rect(
-            Rect::new(x, y, sw * w, sh * h),
-            Color::rgba(rgb.0, rgb.1, rgb.2, a),
-        );
-        draw.fill_rect(
-            Rect::new(
-                x + sw * w * 0.15,
-                y + sh * h * 0.2,
-                sw * w * 0.55,
-                sh * h * 0.45,
-            ),
-            Color::rgba(rgb.0 * 1.1, rgb.1 * 1.05, rgb.2, a * 0.75),
-        );
-    }
-}
-
 fn paint_planets(draw: &mut DrawList, sw: f32, sh: f32, px: f32, py: f32, dayness: f32) {
-    let planet_a = 0.32 + 0.48 * (1.0 - dayness);
-    let cx = sw * 0.72 + px;
-    let cy = sh * 0.22 + py;
-    let r = sh * 0.28;
-
-    fill_disc(draw, cx, cy, r, Color::rgba(0.58, 0.30, 0.52, planet_a));
-    // 右下半边暗面（朝向夜空一侧），不要再叠一整颗暗球。
-    fill_disc(
-        draw,
-        cx + r * 0.28,
-        cy + r * 0.12,
-        r * 0.88,
-        Color::rgba(
-            palette::SKY_NIGHT_TOP.r,
-            palette::SKY_NIGHT_TOP.g,
-            palette::SKY_NIGHT_TOP.b,
-            planet_a * 0.62,
-        ),
-    );
-    fill_disc(
-        draw,
-        cx - r * 0.35,
-        cy - r * 0.25,
-        r * 0.38,
-        Color::rgba(0.82, 0.48, 0.62, planet_a * 0.45),
-    );
-    fill_disc_ring(
-        draw,
-        cx,
-        cy,
-        r * 1.12,
-        4.0,
-        Color::rgba(0.85, 0.72, 0.95, planet_a * 0.35),
-    );
-
-    let moon_a = 0.4 + 0.5 * (1.0 - dayness * 0.5);
-    fill_disc(
-        draw,
-        sw * 0.22 + px * 1.2,
-        sh * 0.16 + py,
-        22.0,
-        Color::rgba(0.75, 0.82, 0.95, moon_a),
-    );
-    fill_disc(
-        draw,
-        sw * 0.22 + px * 1.2 + 6.0,
-        sh * 0.16 + py - 4.0,
-        8.0,
-        Color::rgba(0.55, 0.60, 0.72, moon_a * 0.45),
-    );
-
+    let moon_a = 0.55 + 0.4 * (1.0 - dayness);
+    if dayness < 0.85 {
+        fill_disc(
+            draw,
+            sw * 0.78 + px,
+            sh * 0.16 + py,
+            14.0,
+            Color::rgba(0.92, 0.94, 0.88, moon_a * (1.0 - dayness * 0.7)),
+        );
+    }
     if dayness > 0.15 {
         let sun_a = ((dayness - 0.15) / 0.35).clamp(0.0, 1.0);
-        let sx = sw * 0.55 + px;
+        let sx = sw * 0.22 + px;
         let sy = sh * 0.14 + py;
         fill_disc(
             draw,
             sx,
             sy,
-            18.0 + 8.0 * dayness,
-            Color::rgba(1.0, 0.88, 0.45, 0.35 * sun_a),
+            16.0,
+            Color::rgba(1.0, 0.86, 0.35, 0.45 * sun_a),
         );
         fill_disc(
             draw,
             sx,
             sy,
-            12.0 + 4.0 * dayness,
-            Color::rgba(1.0, 0.94, 0.6, 0.55 * sun_a),
+            10.0,
+            Color::rgba(1.0, 0.96, 0.7, 0.85 * sun_a),
         );
     }
 }
@@ -440,31 +361,6 @@ fn paint_distant_ridges(
         x += w;
         i += 1;
     }
-}
-
-fn paint_floating_islands(draw: &mut DrawList, sw: f32, sh: f32, px: f32, py: f32) {
-    let isle = Color::rgba(0.22, 0.28, 0.36, 0.35);
-    let rock = Color::rgba(0.14, 0.16, 0.22, 0.4);
-    let ix = sw * 0.15 + px * 0.5;
-    let iy = sh * 0.42 + py;
-    // 岛顶：窄列剪影拼出不规则轮廓。
-    let mut x = ix;
-    let mut i = 0u32;
-    let mut prev_h = 22.0f32;
-    while x < ix + 96.0 {
-        let hbits = hash2(i.wrapping_mul(19), 3);
-        let w = 2.0 + (hbits % 4) as f32;
-        let target = 10.0 + ((hbits >> 3) % 38) as f32;
-        let h = prev_h * 0.5 + target * 0.5;
-        prev_h = h;
-        draw.fill_rect(Rect::new(x, iy - h, w, h + 8.0), isle);
-        x += w;
-        i += 1;
-    }
-    draw.fill_rect(Rect::new(ix + 8.0, iy + 6.0, 72.0, 5.0), rock);
-    draw.fill_rect(Rect::new(ix + 28.0, iy + 10.0, 3.0, 16.0), rock);
-    draw.fill_rect(Rect::new(ix + 50.0, iy + 10.0, 2.5, 12.0), rock);
-    draw.fill_rect(Rect::new(ix + 62.0, iy + 10.0, 2.0, 8.0), rock);
 }
 
 fn paint_cloud_layers(
@@ -560,44 +456,5 @@ fn fill_disc(draw: &mut DrawList, cx: f32, cy: f32, radius: f32, color: Color) {
         }
         let half = inner.sqrt();
         draw.fill_rect(Rect::new(cx - half, y as f32, half * 2.0, 1.0), color);
-    }
-}
-
-fn fill_disc_ring(
-    draw: &mut DrawList,
-    cx: f32,
-    cy: f32,
-    radius: f32,
-    thickness: f32,
-    color: Color,
-) {
-    let r_out = radius.max(1.0);
-    let r_in = (radius - thickness).max(0.5);
-    let y0 = (cy - r_out).floor() as i32;
-    let y1 = (cy + r_out).ceil() as i32;
-    for y in y0..=y1 {
-        let dy = y as f32 + 0.5 - cy;
-        let outer = r_out * r_out - dy * dy;
-        if outer <= 0.0 {
-            continue;
-        }
-        let half_out = outer.sqrt();
-        let inner = r_in * r_in - dy * dy;
-        if inner <= 0.0 {
-            draw.fill_rect(
-                Rect::new(cx - half_out, y as f32, half_out * 2.0, 1.0),
-                color,
-            );
-        } else {
-            let half_in = inner.sqrt();
-            draw.fill_rect(
-                Rect::new(cx - half_out, y as f32, half_out - half_in, 1.0),
-                color,
-            );
-            draw.fill_rect(
-                Rect::new(cx + half_in, y as f32, half_out - half_in, 1.0),
-                color,
-            );
-        }
     }
 }

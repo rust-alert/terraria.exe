@@ -6,7 +6,6 @@ use tr_core::{BiomeId, BlockId, ItemId};
 
 use crate::app::TerrariaApp;
 use crate::lightmap::{LightMap, LightSample};
-use crate::portal;
 use crate::world::{TILE, WORLD_H, World, wrap_delta_x, wrap_tx};
 
 fn paint_cracks(draw: &mut DrawList, sx: f32, sy: f32, ratio: f32) {
@@ -64,7 +63,6 @@ fn stamp_can_flip_y(id: BlockId) -> bool {
         id,
         BlockId::DIRT
             | BlockId::STONE
-            | BlockId::SCRAP
             | BlockId::LEAF
             | BlockId::SAND
             | BlockId::SNOW
@@ -109,8 +107,6 @@ fn light_tint(kind: BlockId) -> Color {
     match kind {
         BlockId::TORCH => crate::palette::GLOW_TORCH,
         BlockId::FURNACE => crate::palette::GLOW_FURNACE,
-        BlockId::POD => crate::palette::GLOW_POD,
-        BlockId::WARP => crate::palette::GLOW_WARP,
         _ => crate::palette::GLOW_DEFAULT,
     }
 }
@@ -132,7 +128,6 @@ fn paint_light_halos(
             BlockId::TORCH | BlockId::FURNACE => {
                 0.85 + 0.15 * (day_t * 9.0 + src.x as f32 * 0.7).sin()
             }
-            BlockId::WARP => 0.75 + 0.25 * (day_t * 3.2).sin(),
             _ => 1.0,
         };
         let base_r = src.radius as f32 * TILE * 0.55;
@@ -188,7 +183,7 @@ fn fill_disc(draw: &mut DrawList, cx: f32, cy: f32, radius: f32, color: Color) {
     }
 }
 
-/// 交互物本体染色：火把 / 熔炉 / 船舱 / 裂痕门在瓦片上留下可识别色块。
+/// 交互物本体染色：火把 / 熔炉 / 箱子等。
 fn paint_interactable_accents(
     draw: &mut DrawList,
     id: BlockId,
@@ -196,7 +191,6 @@ fn paint_interactable_accents(
     sy: f32,
     day_t: f32,
     tx: i32,
-    portal_charge: f32,
     near: bool,
 ) {
     if near {
@@ -269,63 +263,6 @@ fn paint_interactable_accents(
             draw.fill_rect(
                 Rect::new(sx + 3.0, sy + 2.0, TILE - 6.0, 2.0),
                 Color::rgba(glow.r, glow.g * 0.6, glow.b * 0.3, 0.25 + 0.15 * flicker),
-            );
-        }
-        BlockId::POD => {
-            let glow = crate::palette::GLOW_POD;
-            let pulse = 0.6 + 0.4 * (day_t * 2.1 + tx as f32 * 0.3).sin();
-            // 舱体冷边与窗格。
-            draw.fill_rect(
-                Rect::new(sx + 2.0, sy + 2.0, TILE - 4.0, 2.0),
-                Color::rgba(glow.r, glow.g, glow.b, 0.35 + 0.2 * pulse),
-            );
-            draw.fill_rect(
-                Rect::new(sx + 2.0, sy + TILE - 4.0, TILE - 4.0, 2.0),
-                Color::rgba(glow.r * 0.7, glow.g * 0.85, glow.b, 0.28),
-            );
-            draw.fill_rect(
-                Rect::new(sx + TILE * 0.22, sy + TILE * 0.28, TILE * 0.56, TILE * 0.36),
-                Color::rgba(0.15, 0.35, 0.48, 0.55),
-            );
-            draw.fill_rect(
-                Rect::new(sx + TILE * 0.28, sy + TILE * 0.34, TILE * 0.44, TILE * 0.22),
-                Color::rgba(glow.r, glow.g, glow.b, 0.22 + 0.25 * pulse),
-            );
-            // 角标灯
-            draw.fill_rect(
-                Rect::new(sx + 3.0, sy + 5.0, 3.0, 3.0),
-                Color::rgba(glow.r, glow.g, glow.b, 0.55 + 0.3 * pulse),
-            );
-            draw.fill_rect(
-                Rect::new(sx + TILE - 6.0, sy + 5.0, 3.0, 3.0),
-                Color::rgba(glow.r, glow.g, glow.b, 0.4 + 0.25 * pulse),
-            );
-        }
-        BlockId::WARP => {
-            let glow = crate::palette::GLOW_WARP;
-            let pulse = 0.5 + 0.5 * (day_t * 3.0).sin();
-            let charge = (portal_charge / crate::portal::AUTO_CHARGE_NEED).clamp(0.0, 1.0);
-            // 外框紫边 + 内漩涡色带。
-            draw.fill_rect(
-                Rect::new(sx + 1.0, sy + 1.0, TILE - 2.0, 2.0),
-                Color::rgba(glow.r, glow.g, glow.b, 0.35 + 0.25 * pulse),
-            );
-            draw.fill_rect(
-                Rect::new(sx + 1.0, sy + TILE - 3.0, TILE - 2.0, 2.0),
-                Color::rgba(glow.r, glow.g, glow.b, 0.3 + 0.2 * charge),
-            );
-            draw.fill_rect(
-                Rect::new(sx + 1.0, sy + 1.0, 2.0, TILE - 2.0),
-                Color::rgba(glow.r * 0.85, glow.g, glow.b, 0.28 + 0.2 * pulse),
-            );
-            draw.fill_rect(
-                Rect::new(sx + TILE - 3.0, sy + 1.0, 2.0, TILE - 2.0),
-                Color::rgba(glow.r * 0.85, glow.g, glow.b, 0.28 + 0.2 * pulse),
-            );
-            let spin = ((day_t * 4.0 + tx as f32).sin() * 0.5 + 0.5) * (TILE - 10.0);
-            draw.fill_rect(
-                Rect::new(sx + 5.0 + spin * 0.15, sy + TILE * 0.42, TILE - 10.0, 2.0),
-                Color::rgba(0.95, 0.7, 1.0, 0.25 + 0.35 * pulse + 0.2 * charge),
             );
         }
         BlockId::CHEST => {
@@ -785,7 +722,14 @@ impl TerrariaApp {
                 let light = lmap.sample(tx, ty);
                 let sx = tx as f32 * TILE - self.cam_x;
                 let sy = ty as f32 * TILE - self.cam_y;
-                if let Some(view) = self.tile_atlas.wall(wall) {
+                if let Some(view) = self.tile_atlas.wall_framed(world, tx, ty) {
+                    draw.tex_rect(
+                        view.tex,
+                        Rect::new(sx, sy, TILE, TILE),
+                        view.uv,
+                        shade(Color::rgb(1.0, 1.0, 1.0), light),
+                    );
+                } else if let Some(view) = self.tile_atlas.wall(wall) {
                     draw.tex_rect(
                         view.tex,
                         Rect::new(sx, sy, TILE, TILE),
@@ -840,18 +784,36 @@ impl TerrariaApp {
                     self.draw_water_tile(draw, world, tx, ty, sx, sy, light);
                     continue;
                 }
+                if self.tree_atlas.ready() && crate::trees::hides_block(world, tx, ty) {
+                    continue;
+                }
 
-                let drawn_atlas = if let Some(view) = self.tile_atlas.block(id) {
+                let drawn_atlas = if let Some(view) = self.tile_atlas.block_framed(world, tx, ty) {
                     let (ox, oy) = if id == BlockId::LEAF {
                         let h = tile_hash(tx, ty);
                         (((h & 3) as f32) - 1.5, (((h >> 3) & 3) as f32) - 1.0)
                     } else {
                         (0.0, 0.0)
                     };
+                    // 地形 framing 已含变体；家具等仍可轻微镜像打破印章。
+                    let uv = if matches!(
+                        id,
+                        BlockId::DIRT
+                            | BlockId::GRASS
+                            | BlockId::STONE
+                            | BlockId::SAND
+                            | BlockId::SNOW
+                            | BlockId::COPPER_ORE
+                            | BlockId::IRON_ORE
+                    ) {
+                        view.uv
+                    } else {
+                        varied_uv(view.uv, tx, ty, stamp_can_flip_y(id))
+                    };
                     draw.tex_rect(
                         view.tex,
                         Rect::new(sx + ox, sy + oy, TILE, TILE),
-                        varied_uv(view.uv, tx, ty, stamp_can_flip_y(id)),
+                        uv,
                         shade(Color::rgb(1.0, 1.0, 1.0), light),
                     );
                     true
@@ -865,13 +827,10 @@ impl TerrariaApp {
                         BlockId::DIRT => DIRT.base,
                         BlockId::GRASS => GRASS.base,
                         BlockId::STONE => STONE.base,
-                        BlockId::SCRAP => Color::rgb(0.75, 0.55, 0.20),
-                        BlockId::POD => Color::rgb(0.35, 0.55, 0.70),
                         BlockId::WOOD => Color::rgb(0.55, 0.35, 0.18),
                         BlockId::LEAF => Color::rgba(0.22, 0.55, 0.22, 0.85),
                         BlockId::WORKBENCH => Color::rgb(0.62, 0.42, 0.22),
                         BlockId::SAPLING => Color::rgb(0.35, 0.72, 0.28),
-                        BlockId::WARP => Color::rgb(0.55, 0.25, 0.85),
                         BlockId::TORCH => Color::rgb(0.55, 0.32, 0.12),
                         BlockId::PLATFORM => Color::rgb(0.5, 0.32, 0.16),
                         BlockId::CHEST => Color::rgb(0.58, 0.38, 0.18),
@@ -942,8 +901,6 @@ impl TerrariaApp {
                     id,
                     BlockId::TORCH
                         | BlockId::FURNACE
-                        | BlockId::POD
-                        | BlockId::WARP
                         | BlockId::CHEST
                         | BlockId::BED
                         | BlockId::WORKBENCH
@@ -961,7 +918,6 @@ impl TerrariaApp {
                         sy,
                         self.day_t,
                         tx,
-                        self.portal.charge,
                         near,
                     );
                 }
@@ -996,6 +952,18 @@ impl TerrariaApp {
             }
         }
 
+        self.tree_atlas.paint(
+            draw,
+            world,
+            self.cam_x,
+            self.cam_y,
+            x0,
+            y0,
+            x1,
+            y1,
+            |tx, ty| shade(Color::rgb(1.0, 1.0, 1.0), lmap.sample(tx, ty)),
+        );
+
         paint_light_halos(
             draw,
             self.cam_x,
@@ -1025,13 +993,11 @@ impl TerrariaApp {
             let c = match d.item {
                 ItemId::DIRT => Color::rgb(0.55, 0.38, 0.22),
                 ItemId::STONE => Color::rgb(0.55, 0.58, 0.62),
-                ItemId::SCRAP => Color::rgb(0.9, 0.7, 0.3),
                 ItemId::WOOD => Color::rgb(0.7, 0.48, 0.25),
                 ItemId::WORKBENCH => Color::rgb(0.8, 0.55, 0.3),
                 ItemId::SAPLING => Color::rgb(0.4, 0.85, 0.35),
                 ItemId::WOOD_PICK | ItemId::STONE_PICK => Color::rgb(0.7, 0.7, 0.75),
                 ItemId::WOOD_SWORD => Color::rgb(0.85, 0.75, 0.4),
-                ItemId::WARP => Color::rgb(0.7, 0.4, 0.95),
                 ItemId::TORCH => Color::rgb(1.0, 0.7, 0.25),
                 ItemId::GEL => Color::rgb(0.75, 0.35, 0.85),
                 ItemId::PLATFORM => Color::rgb(0.7, 0.48, 0.25),
@@ -1050,27 +1016,44 @@ impl TerrariaApp {
         player.draw(draw, self.cam_x, self.cam_y, &self.player_atlas);
         paint_swing_arc(draw, player, self.cam_x, self.cam_y);
         crate::grapple::draw(player, draw, self.cam_x, self.cam_y);
+        for npc in &self.town_npcs {
+            npc.draw(draw, self.cam_x, self.cam_y, &self.npc_atlas);
+        }
+        if self.house_flash_t > 0.0 {
+            let a = (self.house_flash_t / 2.5).clamp(0.0, 1.0) * 0.35;
+            for house in &self.houses {
+                let c = if house.occupied.is_some() {
+                    Color::rgba(0.35, 0.85, 0.45, a)
+                } else {
+                    Color::rgba(0.95, 0.85, 0.35, a)
+                };
+                for &(tx, ty) in &house.tiles {
+                    let sx = tx as f32 * TILE - self.cam_x;
+                    let sy = ty as f32 * TILE - self.cam_y;
+                    draw.fill_rect(Rect::new(sx, sy, TILE, TILE), c);
+                }
+            }
+        }
         for e in &self.enemies {
-            e.draw(draw, self.cam_x, self.cam_y, self.tile_atlas.slime());
+            e.draw(
+                draw,
+                self.cam_x,
+                self.cam_y,
+                self.tile_atlas.slime(),
+                self.npc_atlas.zombie(),
+                self.npc_atlas.cell_size(),
+                self.npc_atlas.demon_eye(),
+                self.npc_atlas.demon_eye_cell(),
+            );
         }
         crate::weapon::draw_projectiles(&self.projectiles, draw, self.cam_x, self.cam_y);
         crate::fx::draw_floaters(&self.damage_fx, draw, self.cam_x, self.cam_y);
         crate::fx::draw_dust(&self.dust_fx, draw, self.cam_x, self.cam_y);
 
-        if self.portal.flash_t > 0.0 {
-            let t = self.portal.flash_t / portal::FLASH_TIME;
-            let r = 18.0 + (1.0 - t) * 40.0;
-            let sx = wrap_delta_x(self.cam_x, self.portal.flash_x);
-            let sy = self.portal.flash_y - self.cam_y;
-            draw.fill_rect(
-                Rect::new(sx - r, sy - r, r * 2.0, r * 2.0),
-                Color::rgba(0.85, 0.55, 1.0, 0.55 * t),
-            );
-        }
 
         let (mx, my) = self.mouse;
         let menus_block_aim =
-            self.craft_open || self.bag_open || self.portal.menu_open || self.chest_open.is_some();
+            self.craft_open || self.bag_open || self.chest_open.is_some();
         if !menus_block_aim {
             if let Some(preview) =
                 crate::aim::evaluate(world, player, mx + self.cam_x, my + self.cam_y)
