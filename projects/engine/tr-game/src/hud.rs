@@ -47,7 +47,6 @@ const BAG_COLS: usize = 7;
 const BAG_SLOT: f32 = 52.0;
 const BAG_GAP: f32 = 6.0;
 
-
 fn item_swatch(id: ItemId) -> Color {
     match id {
         ItemId::DIRT => Color::rgb(0.55, 0.38, 0.22),
@@ -94,7 +93,6 @@ fn hotbar_geom(screen_w: f32, _screen_h: f32) -> (f32, f32, f32, f32, usize) {
     let base_y = 20.0;
     (base_x, base_y, slot, gap, n)
 }
-
 
 fn vitals_rect(screen_w: f32) -> Rect {
     Rect::new(screen_w - 280.0, 12.0, 264.0, 120.0)
@@ -172,12 +170,7 @@ fn map_panel_rect(screen_w: f32, screen_h: f32) -> Rect {
 
 fn shop_panel_rect(screen_w: f32) -> Rect {
     let n = crate::shop::MERCHANT_OFFERS.len() as f32;
-    Rect::new(
-        screen_w * 0.5 - 220.0,
-        88.0,
-        440.0,
-        64.0 + n * 40.0 + 36.0,
-    )
+    Rect::new(screen_w * 0.5 - 220.0, 88.0, 440.0, 64.0 + n * 40.0 + 36.0)
 }
 
 fn shop_row_rect(screen_w: f32, i: usize) -> Rect {
@@ -679,12 +672,20 @@ impl TerrariaApp {
                 tr_core::BiomeId::Tundra => Color::rgb(0.35, 0.48, 0.58),
             };
             draw.fill_rect(
-                Rect::new(mx + wx as f32 * scale, my + mh - col_h, scale.max(1.0), col_h),
+                Rect::new(
+                    mx + wx as f32 * scale,
+                    my + mh - col_h,
+                    scale.max(1.0),
+                    col_h,
+                ),
                 c,
             );
         }
         let px = mx + (tx as f32 / WORLD_W as f32) * mw;
-        draw.fill_rect(Rect::new(px - 1.0, my, 2.0, mh), Color::rgb(1.0, 0.85, 0.35));
+        draw.fill_rect(
+            Rect::new(px - 1.0, my, 2.0, mh),
+            Color::rgb(1.0, 0.85, 0.35),
+        );
     }
 
     fn paint_hotbar(&self, draw: &mut DrawList, player: &crate::player::Player) {
@@ -980,14 +981,7 @@ impl TerrariaApp {
                     item_swatch(offer.item),
                 );
             }
-            label(
-                draw,
-                r.x + 42.0,
-                r.y + 8.0,
-                13.0,
-                TEXT_MAIN,
-                offer.label,
-            );
+            label(draw, r.x + 42.0, r.y + 8.0, 13.0, TEXT_MAIN, offer.label);
             label(
                 draw,
                 r.x + r.w - 88.0,
@@ -1048,7 +1042,8 @@ impl TerrariaApp {
 
         for i in 0..bag_n {
             let slot = bag_slot_rect(self.screen_w, bag_n, i);
-            self.hud_chrome.paint_slot(draw, slot.x, slot.y, slot.w, false);
+            self.hud_chrome
+                .paint_slot(draw, slot.x, slot.y, slot.w, false);
             if let Some(stack) = player.inv.bag.get(i).and_then(|s| s.as_ref()) {
                 let id = stack.id;
                 if let Some(view) = self.icon_atlas.view(id) {
@@ -1141,7 +1136,7 @@ impl TerrariaApp {
             box_r.y + 16.0,
             12.0,
             TEXT_DIM,
-            "M / Esc 关闭 · 青=舱 紫=锚 黄=你",
+            "M / Esc 关闭 · 青=出生点 黄=你",
         );
 
         let mx = box_r.x + 16.0;

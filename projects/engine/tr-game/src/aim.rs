@@ -28,7 +28,7 @@ pub enum AimKind {
     PlaceNoSupport,
     /// 手持物不可放，且目标非可挖。
     Idle,
-    /// 箱/床/舱/站等可交互设施。
+    /// 箱/床/制作站等可交互设施。
     Interact,
     /// 手持武器时的攻击朝向格。
     Attack,
@@ -186,10 +186,7 @@ fn has_support(world: &World, tx: i32, ty: i32) -> bool {
 fn is_interactable(world: &World, tx: i32, ty: i32) -> bool {
     matches!(
         world.get(tx, ty),
-        BlockId::CHEST
-            | BlockId::BED
-            | BlockId::WORKBENCH
-            | BlockId::FURNACE
+        BlockId::CHEST | BlockId::BED | BlockId::WORKBENCH | BlockId::FURNACE
     )
 }
 

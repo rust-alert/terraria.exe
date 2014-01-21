@@ -52,7 +52,7 @@ impl TerrariaApp {
             if let Some(msg) = player.try_craft(world, 0) {
                 tracing::info!(msg, "demo craft workbench");
             }
-            // 先放工作台，再搓工具（避开舱旁预置火把/木箱）
+            // 先放工作台，再搓工具（避开出生点旁预置火把/木箱）
             player.select_item(ItemId::WORKBENCH);
             let mut wb_placed = false;
             for dx in 4..20 {
@@ -285,7 +285,7 @@ impl TerrariaApp {
                     tracing::info!(btx, bty, "demo place bed force");
                 }
             }
-            // 舱内过夜
+            // 过夜（床）
             let (sx, sy) = world.spawn_pos();
             player.x = sx;
             player.y = sy;
