@@ -262,27 +262,19 @@ impl HouseSlot {
     }
 }
 
-/// 在玩家附近尝试登记新房；返回提示文案。
-pub fn try_register_near(
-    world: &World,
-    houses: &mut Vec<HouseSlot>,
-    px: f32,
-    py: f32,
-) -> String {
+/// 在玩家附近查询房屋资格（只读，不登记）。返回提示与高亮格。
+pub fn query_near(world: &World, px: f32, py: f32) -> (String, Vec<(i32, i32)>) {
     let tx = (px / crate::world::TILE).floor() as i32;
     let ty = (py / crate::world::TILE).floor() as i32;
     let report = scan_from(world, tx, ty);
-    if !report.valid() {
-        return format!("房屋：{}", report.fail.label());
-    }
-    if houses.iter().any(|h| h.overlaps(&report)) {
-        return "房屋：已登记过这间".into();
-    }
-    if let Some(slot) = HouseSlot::from_report(&report) {
-        let (sx, sy) = slot.stand;
-        houses.push(slot);
-        format!("房屋：合格并已登记（站立格 {sx},{sy}）")
+    let msg = if report.valid() {
+        if let Some((sx, sy)) = report.stand {
+            format!("房屋：合格（站立格 {sx},{sy}）· 入住改由住房分配，不再按 H 登记")
+        } else {
+            "房屋：合格".into()
+        }
     } else {
-        "房屋：判定异常".into()
-    }
+        format!("房屋：{}", report.fail.label())
+    };
+    (msg, report.tiles)
 }

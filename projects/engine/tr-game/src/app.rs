@@ -6,7 +6,6 @@ use spark_renderer::{DrawList, FrameCtx, GameHost};
 use tr_core::ItemId;
 
 use crate::content_boot::ContentAssets;
-use crate::proof::ProofGpu;
 use crate::enemy::{Enemy, spawn_surface_slimes};
 use crate::fx::{DamageFloater, DustParticle};
 use crate::housing::HouseSlot;
@@ -14,10 +13,11 @@ use crate::hud_chrome::HudChrome;
 use crate::icons::IconAtlas;
 use crate::npc::{NpcAtlas, TownNpc, spawn_guide};
 use crate::player::{ItemStack, Player, PlayerAtlas};
+use crate::proof::ProofGpu;
 use crate::sfx::SfxBank;
 use crate::sky::SkyAtlas;
-use crate::trees::TreeAtlas;
 use crate::tiles::TileAtlas;
+use crate::trees::TreeAtlas;
 use crate::weapon::Projectile;
 use crate::world::World;
 
@@ -50,18 +50,20 @@ pub struct TerrariaApp {
     pub(crate) enemies: Vec<Enemy>,
     /// 城镇 NPC（向导等）。
     pub(crate) town_npcs: Vec<TownNpc>,
-    /// 已登记合格房屋。
+    /// 已登记合格房屋（入住分配用；不再由 H 键写入）。
     pub(crate) houses: Vec<HouseSlot>,
     /// 房屋高亮剩余时间（秒）。
     pub(crate) house_flash_t: f32,
+    /// 最近一次 H 查询的室内格（只读高亮）。
+    pub(crate) house_query_tiles: Vec<(i32, i32)>,
+    /// 最近一次查询是否合格。
+    pub(crate) house_query_ok: bool,
     /// 世界日时（秒），周期约 180s。
     pub(crate) day_t: f32,
     /// 是否已睡过一夜或熬过破晓（住所循环）。
     pub(crate) survived_night: bool,
     /// 本周期是否已提示「入夜」。
     pub(crate) night_warned: bool,
-    /// 黑暗压力累计（秒），靠近光源时衰减。
-    pub(crate) dark_stress: f32,
     /// I 键背包面板。
     pub(crate) bag_open: bool,
     /// 商人商店面板。
@@ -127,10 +129,11 @@ impl TerrariaApp {
             town_npcs: Vec::new(),
             houses: Vec::new(),
             house_flash_t: 0.0,
+            house_query_tiles: Vec::new(),
+            house_query_ok: false,
             day_t: 40.0,
             survived_night: false,
             night_warned: false,
-            dark_stress: 0.0,
             bag_open: false,
             shop_open: false,
             map_open: false,
@@ -185,22 +188,21 @@ impl TerrariaApp {
         self.town_npcs = vec![spawn_guide(self.world.as_ref().unwrap())];
         self.houses.clear();
         self.house_flash_t = 0.0;
+        self.house_query_tiles.clear();
+        self.house_query_ok = false;
         self.craft_open = false;
         self.bag_open = false;
         self.shop_open = false;
         self.map_open = false;
         self.survived_night = false;
         self.night_warned = false;
-        self.dark_stress = 0.0;
         self.chest_open = None;
         self.cursor_stack = None;
         self.projectiles.clear();
         self.damage_fx.clear();
         self.dust_fx.clear();
         self.screen = Screen::Playing;
-        self.set_toast(
-            "向导在附近。工作台做木墙，封闭房间铺墙+火把+床，按 H 登记房屋。",
-        );
+        self.set_toast("向导在附近。工作台做木墙，封闭房间铺墙+火把+床，按 H 查询房屋。");
         tracing::info!(x = sx, y = sy, n_enemy = self.enemies.len(), "进入地表");
     }
 

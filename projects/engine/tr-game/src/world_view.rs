@@ -911,15 +911,7 @@ impl TerrariaApp {
                     let dx = wrap_delta_x(ptx as f32 * TILE, tx as f32 * TILE).abs() / TILE;
                     let dy = (pty - ty).abs() as f32;
                     let near = dx <= 2.5 && dy <= 2.0;
-                    paint_interactable_accents(
-                        draw,
-                        id,
-                        sx,
-                        sy,
-                        self.day_t,
-                        tx,
-                        near,
-                    );
+                    paint_interactable_accents(draw, id, sx, sy, self.day_t, tx, near);
                 }
                 if matches!(id, BlockId::COPPER_ORE | BlockId::IRON_ORE) {
                     paint_ore_emissive(draw, id, sx, sy, self.day_t, tx, ty, light);
@@ -1021,17 +1013,15 @@ impl TerrariaApp {
         }
         if self.house_flash_t > 0.0 {
             let a = (self.house_flash_t / 2.5).clamp(0.0, 1.0) * 0.35;
-            for house in &self.houses {
-                let c = if house.occupied.is_some() {
-                    Color::rgba(0.35, 0.85, 0.45, a)
-                } else {
-                    Color::rgba(0.95, 0.85, 0.35, a)
-                };
-                for &(tx, ty) in &house.tiles {
-                    let sx = tx as f32 * TILE - self.cam_x;
-                    let sy = ty as f32 * TILE - self.cam_y;
-                    draw.fill_rect(Rect::new(sx, sy, TILE, TILE), c);
-                }
+            let c = if self.house_query_ok {
+                Color::rgba(0.35, 0.85, 0.45, a)
+            } else {
+                Color::rgba(0.95, 0.45, 0.35, a)
+            };
+            for &(tx, ty) in &self.house_query_tiles {
+                let sx = tx as f32 * TILE - self.cam_x;
+                let sy = ty as f32 * TILE - self.cam_y;
+                draw.fill_rect(Rect::new(sx, sy, TILE, TILE), c);
             }
         }
         for e in &self.enemies {
@@ -1050,10 +1040,8 @@ impl TerrariaApp {
         crate::fx::draw_floaters(&self.damage_fx, draw, self.cam_x, self.cam_y);
         crate::fx::draw_dust(&self.dust_fx, draw, self.cam_x, self.cam_y);
 
-
         let (mx, my) = self.mouse;
-        let menus_block_aim =
-            self.craft_open || self.bag_open || self.chest_open.is_some();
+        let menus_block_aim = self.craft_open || self.bag_open || self.chest_open.is_some();
         if !menus_block_aim {
             if let Some(preview) =
                 crate::aim::evaluate(world, player, mx + self.cam_x, my + self.cam_y)
