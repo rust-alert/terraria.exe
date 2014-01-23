@@ -55,20 +55,11 @@ impl TerrariaApp {
         if frame.input.key_pressed(Key::H) {
             if let (Some(world), Some(player)) = (self.world.as_ref(), self.player.as_ref()) {
                 let (px, py, pw, ph) = player.hitbox();
-                let msg = crate::housing::try_register_near(
-                    world,
-                    &mut self.houses,
-                    px + pw * 0.5,
-                    py + ph * 0.5,
-                );
+                let (msg, tiles) = crate::housing::query_near(world, px + pw * 0.5, py + ph * 0.5);
+                self.house_query_ok = msg.contains("合格");
+                self.house_query_tiles = tiles;
                 self.house_flash_t = 2.5;
-                if let Some(assign) =
-                    crate::npc::assign_homes(world, &mut self.houses, &mut self.town_npcs)
-                {
-                    self.set_toast(format!("{msg} · {assign}"));
-                } else {
-                    self.set_toast(msg);
-                }
+                self.set_toast(msg);
             }
         }
         if frame.input.key_pressed(Key::M) {
@@ -104,8 +95,7 @@ impl TerrariaApp {
         }
 
         // 滚轮切快捷栏（制作/传送/箱子打开时不切，避免误触）。
-        if !self.craft_open && !self.bag_open && !self.shop_open && self.chest_open.is_none()
-        {
+        if !self.craft_open && !self.bag_open && !self.shop_open && self.chest_open.is_none() {
             let wheel = frame.input.wheel();
             if wheel.abs() > 0.01 {
                 if let Some(p) = self.player.as_mut() {
@@ -121,7 +111,7 @@ impl TerrariaApp {
             }
         }
 
-        // 快档
+        // 开发会话快照（非正版 .wld）
         if frame.input.key_pressed(Key::F5) {
             if let (Some(world), Some(player)) = (self.world.as_ref(), self.player.as_ref()) {
                 let extra = SessionExtra {
@@ -129,8 +119,8 @@ impl TerrariaApp {
                     survived_night: self.survived_night,
                 };
                 match save_session(world, player, &self.enemies, extra) {
-                    Ok(p) => self.set_toast(format!("已存档 {}", p.display())),
-                    Err(e) => self.set_toast(format!("存档失败：{e}")),
+                    Ok(p) => self.set_toast(format!("已写入开发会话快照 {}", p.display())),
+                    Err(e) => self.set_toast(format!("会话快照失败：{e}")),
                 }
             }
         }
@@ -144,9 +134,9 @@ impl TerrariaApp {
                     Ok(()) => {
                         self.day_t = extra.day_t;
                         self.survived_night = extra.survived_night;
-                        self.set_toast("读档成功");
+                        self.set_toast("已读取开发会话快照");
                     }
-                    Err(e) => self.set_toast(format!("读档失败：{e}")),
+                    Err(e) => self.set_toast(format!("读取会话快照失败：{e}")),
                 }
             }
         }
@@ -197,14 +187,14 @@ impl TerrariaApp {
             let night = night_factor(self.day_t);
             if night > 0.55 && !self.night_warned {
                 self.night_warned = true;
-                toast = Some("夜幕降临……点亮火把，或回床/舱按 E 过夜。".into());
+                toast = Some("夜幕降临……点亮火把，靠近床按 E 可过夜。".into());
             }
             if night < 0.2 {
                 self.night_warned = false;
             }
             world.tick_drops(frame.dt);
             world.tick_growth(frame.dt);
-            world.tick_fluids(2);
+            // 流体步进已冻结：当前为未经验证的水位模型，待原版 0..=255 液量替换。
             let night_cap = if night > 0.85 { 16 } else { 12 };
             if night > 0.55 && self.enemies.len() < night_cap {
                 maybe_spawn_night_enemy(world, &mut self.enemies, player, night);
@@ -218,23 +208,6 @@ impl TerrariaApp {
                 &self.sfx,
                 &self.audio,
             );
-            // 深夜远离光源：缓慢掉血，逼出火把与住所。
-            if night > 0.7 {
-                if near_light(world, player) {
-                    self.dark_stress = (self.dark_stress - frame.dt * 1.5).max(0.0);
-                } else {
-                    self.dark_stress += frame.dt;
-                    if self.dark_stress > 4.0 {
-                        self.dark_stress = 2.5;
-                        player.hurt(2.0);
-                        if toast.is_none() {
-                            toast = Some("太暗了……快点火把或躲回亮处。".into());
-                        }
-                    }
-                }
-            } else {
-                self.dark_stress = 0.0;
-            }
             crate::fx::tick_floaters(&mut self.damage_fx, frame.dt);
             crate::fx::tick_dust(&mut self.dust_fx, frame.dt);
             if let Some(msg) = crate::weapon::update_projectiles(
@@ -291,11 +264,10 @@ impl TerrariaApp {
                                 &mut self.cursor_stack,
                             ) {
                                 let tx = wrap_tx(
-                                    ((player.x + crate::player::HIT_W * 0.5) / TILE).floor()
-                                        as i32,
+                                    ((player.x + crate::player::HIT_W * 0.5) / TILE).floor() as i32,
                                 );
-                                let ty = ((player.y + crate::player::HIT_H * 0.5) / TILE).floor()
-                                    as i32;
+                                let ty =
+                                    ((player.y + crate::player::HIT_H * 0.5) / TILE).floor() as i32;
                                 world.spawn_drop_at_tile(tx, ty, left.id, left.count);
                             }
                         }
@@ -407,13 +379,7 @@ impl TerrariaApp {
                         pressed,
                         held,
                     ) {
-                        apply_primary(
-                            &self.sfx,
-                            &self.audio,
-                            &mut self.dust_fx,
-                            &mut toast,
-                            out,
-                        );
+                        apply_primary(&self.sfx, &self.audio, &mut self.dust_fx, &mut toast, out);
                     }
                 }
                 if frame.input.mouse_pressed(MouseBtn::Right) {
@@ -435,7 +401,6 @@ impl TerrariaApp {
             let max_y = WORLD_H as f32 * TILE - frame.screen_h;
             self.cam_y = self.cam_y.clamp(0.0, max_y.max(0.0));
         }
-
 
         if let Some(msg) = toast {
             self.set_toast(msg);
@@ -474,7 +439,7 @@ fn try_rest(
         }
         ("在床上睡过一夜……家园已确认。".into(), true)
     } else {
-        ("在舱内睡过一夜……天已破晓。".into(), true)
+        ("睡过一夜……天已破晓。".into(), true)
     }
 }
 
@@ -574,20 +539,6 @@ fn cue_dig_fx(
     } else {
         crate::fx::burst_dust(dust, x, y, 0.35);
     }
-}
-
-fn near_light(world: &World, player: &Player) -> bool {
-    let (px, py, pw, ph) = player.hitbox();
-    let tx = wrap_tx(((px + pw * 0.5) / TILE).floor() as i32);
-    let ty = ((py + ph * 0.5) / TILE).floor() as i32;
-    for dy in -5..=5 {
-        for dx in -5..=5 {
-            if world.get(tx + dx, ty + dy).emits_light() {
-                return true;
-            }
-        }
-    }
-    false
 }
 
 fn maybe_spawn_night_enemy(world: &World, enemies: &mut Vec<Enemy>, player: &Player, night: f32) {

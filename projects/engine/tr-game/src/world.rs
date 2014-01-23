@@ -159,7 +159,7 @@ impl World {
 
         w.plant_trees();
         w.carve_and_fill_lakes();
-        w.bake_fluid_flow();
+        // 不再烘焙 `0..=8` 流动：湖泊保持源水静置，待原版液量模型替换。
         w.carve_shallow_caves();
         w.place_copper_veins();
 
@@ -299,7 +299,10 @@ impl World {
         }
     }
 
-    /// 一次性按 MC 规则烘焙流动/下落水位。
+    /// 一次性按过渡期水位规则烘焙流动/下落。
+    ///
+    /// **已隔离**：生成管线不再调用。保留实现仅供对照/删除前引用。
+    #[allow(dead_code)]
     fn bake_fluid_flow(&mut self) {
         for _ in 0..48 {
             if !self.tick_fluids_once() {
@@ -413,7 +416,10 @@ impl World {
         }
     }
 
-    /// 每帧调用：推进若干轮流体扩散 / 退水。
+    /// 推进过渡期流体扩散 / 退水。
+    ///
+    /// **已隔离**：玩法循环不再调用。权威 `0..=255` 液量落地前勿重新挂回。
+    #[allow(dead_code)]
     pub fn tick_fluids(&mut self, rounds: u32) {
         for _ in 0..rounds.max(1) {
             if !self.tick_fluids_once() {
@@ -422,7 +428,8 @@ impl World {
         }
     }
 
-    /// 单轮流体步进。有变化返回 `true`。
+    /// 单轮流体步进（过渡期）。有变化返回 `true`。
+    #[allow(dead_code)]
     fn tick_fluids_once(&mut self) -> bool {
         let mut sources = Vec::new();
         for y in 0..WORLD_H {

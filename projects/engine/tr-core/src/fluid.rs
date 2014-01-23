@@ -1,10 +1,11 @@
-//! Minecraft 风格流体元数据（水位 `0..=8`）。
+//! 液体元数据（过渡）。
 //!
-//! - `0`：源格（满格）
-//! - `1..=7`：水平流动，数值越大越浅
-//! - `8`：下落中（视觉满格）
+//! **现状（未经验证）**：仍沿用 `0..=8` 水位与源水语义，**不是**正版 `0..=255`
+//! 液量模型。权威路径建立前禁止继续扩展该语义；运行时流体步进已冻结。
+//!
+//! 目标：改为 `liquid_amount: u8`（`0..=255`）+ `liquid_kind`，由世界事务更新。
 
-/// 流体水位（与方块分存；仅 [`crate::BlockId::WATER`] 有效）。
+/// 过渡期水位（仅 [`crate::BlockId::WATER`]；待替换为原版液量）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct FluidLevel(pub u8);
 
@@ -24,7 +25,7 @@ impl FluidLevel {
         self.0 >= 8
     }
 
-    /// 格内填充比例 `0..=1`（自格底向上）。
+    /// 格内填充比例 `0..=1`（自格底向上）。过渡近似，非正式原版曲面。
     pub fn fill_ratio(self) -> f32 {
         let lv = self.clamp_valid().0;
         if lv == 0 || lv >= 8 {
@@ -34,7 +35,7 @@ impl FluidLevel {
         }
     }
 
-    /// 水平扩散下一格水位；源/下落按 1 起步。已到最浅则 `None`。
+    /// 水平扩散下一格水位。**过渡期 API**，权威液体实现后删除。
     pub fn spread_next(self) -> Option<Self> {
         let base = if self.0 == 0 || self.0 >= 8 {
             1
@@ -44,7 +45,7 @@ impl FluidLevel {
         if base > 7 { None } else { Some(Self(base)) }
     }
 
-    /// 变浅一档；已是最浅或下落则清空（返回 `None` 表示应移除）。
+    /// 变浅一档。**过渡期 API**，权威液体实现后删除。
     pub fn recede(self) -> Option<Self> {
         if self.is_source() {
             return Some(self);
