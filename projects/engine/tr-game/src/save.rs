@@ -1,4 +1,6 @@
-//! 会话快档：方块全表 + 玩家 / 日时（无第三方序列化）。
+//! 开发会话快照：方块全表 + 玩家 / 日时（无第三方序列化）。
+//!
+//! 这不是正版 `.wld` / `.plr` 兼容格式，仅供本机构建调试。
 
 use std::path::PathBuf;
 
@@ -8,7 +10,10 @@ use crate::enemy::Enemy;
 use crate::player::Player;
 use crate::world::World;
 
-const MAGIC_V1: &str = "TERRARIA_SAVE_V1";
+/// 开发会话快照魔数。禁止使用暗示正版兼容的名称。
+const MAGIC_V1: &str = "TR_DEV_SESSION_V1";
+/// 旧魔数：仅读档兼容，写入一律用 [`MAGIC_V1`]。
+const MAGIC_LEGACY: &str = "TERRARIA_SAVE_V1";
 
 /// 与方块/背包并列的会话元数据。
 #[derive(Debug, Clone, Copy)]
@@ -29,7 +34,7 @@ impl Default for SessionExtra {
 pub fn quick_save_path() -> PathBuf {
     std::env::current_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
-        .join("terraria_quick.sav")
+        .join("tr_dev_session.sav")
 }
 
 pub fn save_session(
@@ -121,9 +126,9 @@ pub fn load_session(
     let path = quick_save_path();
     let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let mut lines = text.lines();
-    let magic = lines.next().ok_or("空存档")?;
-    if magic != MAGIC_V1 {
-        return Err("存档版本不匹配（需要 TERRARIA_SAVE_V1）".into());
+    let magic = lines.next().ok_or("空会话快照")?;
+    if magic != MAGIC_V1 && magic != MAGIC_LEGACY {
+        return Err("会话快照版本不匹配（需要 TR_DEV_SESSION_V1）".into());
     }
     let mut seed = world.seed;
     let mut blocks_raw = None;
