@@ -14,9 +14,7 @@ use tr_core::{BlockId, DamageHit, ItemId, ResistProfile, resolve_damage};
 
 use crate::craft::{CraftStation, RECIPES};
 use crate::grapple::Grapple;
-use crate::world::{
-    TILE, WORLD_H, World, tile_x_near, world_pixel_w, wrap_delta_x, wrap_tx,
-};
+use crate::world::{TILE, WORLD_H, World, tile_x_near, world_pixel_w, wrap_delta_x, wrap_tx};
 
 pub const HIT_W: f32 = TILE * (20.0 / 16.0);
 pub const HIT_H: f32 = TILE * (42.0 / 16.0);
@@ -54,7 +52,7 @@ pub struct Player {
     pub(crate) fall_start_y: Option<f32>,
     /// 耗魔后短暂停回蓝。
     mana_regen_cd: f32,
-    /// 家园床重生点（世界像素）；`None` 则回舱。
+    /// 家园床重生点（世界像素）；`None` 则回出生点。
     pub home_spawn: Option<(f32, f32)>,
     /// 活动中的钩爪（飞行或已挂点）。
     pub grapple: Option<Grapple>,
@@ -62,10 +60,6 @@ pub struct Player {
     pub extra_jumps: u8,
     /// 本帧是否刚落地（供尘土特效消费后清零）。
     pub just_landed: bool,
-    /// 离地后仍可起跳的土狼剩余时间。
-    pub(crate) coyote_t: f32,
-    /// 提前按下的跳跃输入缓冲。
-    pub(crate) jump_buffer_t: f32,
     /// 单向平台下穿忽略碰撞的剩余时间。
     pub(crate) drop_through_t: f32,
     /// 本段跳跃是否仍等待「松键削峰」。
@@ -96,8 +90,6 @@ impl Player {
             grapple: None,
             extra_jumps: 0,
             just_landed: false,
-            coyote_t: 0.0,
-            jump_buffer_t: 0.0,
             drop_through_t: 0.0,
             jump_cut_armed: false,
         }
@@ -707,7 +699,6 @@ impl Player {
             CraftStation::Hand
         }
     }
-
 }
 
 fn aabb_overlap(ax: f32, ay: f32, aw: f32, ah: f32, bx: f32, by: f32, bw: f32, bh: f32) -> bool {

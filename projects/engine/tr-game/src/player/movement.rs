@@ -1,4 +1,6 @@
-//! 玩家移动控制器：加速/制动、土狼时间、跳跃缓冲、可变跳高、单向平台下穿。
+//! 玩家移动控制器：加速/制动、可变跳高、单向平台下穿。
+//!
+//! 土狼时间与跳跃缓冲已移除：在正版测量基线建立前，只保留落地起跳与松键削峰。
 
 use spark_input::{Input, Key};
 
@@ -16,8 +18,6 @@ const GROUND_ACCEL: f32 = MOVE_SPEED * 14.0;
 const GROUND_BRAKE: f32 = MOVE_SPEED * 18.0;
 const AIR_ACCEL: f32 = MOVE_SPEED * 7.0;
 const AIR_BRAKE: f32 = MOVE_SPEED * 4.0;
-const COYOTE_TIME: f32 = 0.10;
-const JUMP_BUFFER: f32 = 0.10;
 /// 松开跳跃键后保留的上升速度比例。
 const JUMP_CUT: f32 = 0.42;
 const DROP_THROUGH_TIME: f32 = 0.22;
@@ -69,13 +69,7 @@ pub(crate) fn tick(player: &mut Player, world: &World, input: &Input, dt: f32) {
         player.facing = intent.ax.signum();
     }
 
-    player.coyote_t = (player.coyote_t - dt).max(0.0);
-    player.jump_buffer_t = (player.jump_buffer_t - dt).max(0.0);
     player.drop_through_t = (player.drop_through_t - dt).max(0.0);
-
-    if intent.jump_pressed {
-        player.jump_buffer_t = JUMP_BUFFER;
-    }
 
     let climbing = player.on_ladder(world);
     let wet = world.water_overlap_ratio(player.x, player.y, HIT_W, HIT_H);
@@ -85,10 +79,8 @@ pub(crate) fn tick(player: &mut Player, world: &World, input: &Input, dt: f32) {
         apply_horizontal(player, intent.ax, true, dt);
         player.vy = intent.climb_y * MOVE_SPEED * 0.85;
         player.fall_start_y = None;
-        player.coyote_t = 0.0;
         if intent.jump_pressed && !intent.want_drop_through {
             player.vy = JUMP_V * 0.85;
-            player.jump_buffer_t = 0.0;
         }
     } else if swimming {
         apply_horizontal(player, intent.ax, false, dt);
@@ -103,12 +95,10 @@ pub(crate) fn tick(player: &mut Player, world: &World, input: &Input, dt: f32) {
         player.vy *= 0.92;
         player.vy = player.vy.clamp(-MOVE_SPEED * 0.9, MOVE_SPEED * 0.7);
         player.fall_start_y = None;
-        player.coyote_t = 0.0;
     } else {
         apply_horizontal(player, intent.ax, player.on_ground, dt);
 
         if player.on_ground {
-            player.coyote_t = COYOTE_TIME;
             player.extra_jumps = if player.inv.has_cloud_jump() { 1 } else { 0 };
         }
 
@@ -117,24 +107,18 @@ pub(crate) fn tick(player: &mut Player, world: &World, input: &Input, dt: f32) {
             if standing_on_platform(player, world) {
                 player.drop_through_t = DROP_THROUGH_TIME;
                 player.on_ground = false;
-                player.coyote_t = 0.0;
-                player.jump_buffer_t = 0.0;
                 player.vy = MOVE_SPEED * 0.35;
                 player.fall_start_y = Some(player.y + HIT_H);
             }
         }
 
-        let can_coyote_jump = player.coyote_t > 0.0 || player.on_ground;
-        let buffered = player.jump_buffer_t > 0.0;
-        if buffered && can_coyote_jump && player.drop_through_t <= 0.0 {
+        if intent.jump_pressed && player.on_ground && player.drop_through_t <= 0.0 {
             player.vy = JUMP_V;
             player.on_ground = false;
-            player.coyote_t = 0.0;
-            player.jump_buffer_t = 0.0;
             player.fall_start_y = Some(player.y + HIT_H);
             player.jump_cut_armed = true;
-        } else if !player.on_ground
-            && buffered
+        } else if intent.jump_pressed
+            && !player.on_ground
             && player.extra_jumps > 0
             && player.inv.has_cloud_jump()
             && player.grapple.is_none()
@@ -142,7 +126,6 @@ pub(crate) fn tick(player: &mut Player, world: &World, input: &Input, dt: f32) {
         {
             player.vy = JUMP_V * 0.92;
             player.extra_jumps -= 1;
-            player.jump_buffer_t = 0.0;
             player.fall_start_y = Some(player.y + HIT_H);
             player.jump_cut_armed = true;
         }
