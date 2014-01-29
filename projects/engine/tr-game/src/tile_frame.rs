@@ -348,10 +348,7 @@ enum Rel {
 }
 
 fn is_stone_family(id: BlockId) -> bool {
-    matches!(
-        id,
-        BlockId::STONE | BlockId::COPPER_ORE | BlockId::IRON_ORE
-    )
+    matches!(id, BlockId::STONE | BlockId::COPPER_ORE | BlockId::IRON_ORE)
 }
 
 fn is_dirtish(id: BlockId) -> bool {
@@ -563,9 +560,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn catch_all_base_rule_exists() {
+    fn isolated_tile_uses_open_uv() {
+        // mask=0 表示四向皆空，应命中 `0x0055/0x0000`，而非落到末尾兜底。
         let (u, v) = match_rules(BASE_RULES, 0, 0).unwrap();
-        assert_eq!((u, v), (18, 18));
+        assert_eq!((u, v), (162, 54));
+    }
+
+    #[test]
+    fn catch_all_base_rule_is_last() {
+        let last = BASE_RULES.last().expect("base rules");
+        assert_eq!(last.mask, 0);
+        assert_eq!(last.val, 0);
+        assert_eq!((last.uvs[0], last.uvs[1]), (18, 18));
     }
 
     #[test]
