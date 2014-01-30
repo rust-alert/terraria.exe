@@ -6,6 +6,7 @@ mod content;
 mod damage;
 mod fluid;
 mod schema;
+mod tile;
 mod weapon;
 
 pub use biome::{BiomeId, biome_at};
@@ -19,6 +20,7 @@ pub use schema::{
     SchemaToolKind, block_def_from_schema, consumable_item_from_schema, example_dirt_block,
     placeable_item_from_schema, tool_item_from_schema,
 };
+pub use tile::{LiquidKind, SlopeKind, Tile};
 pub use weapon::{WeaponKind, WeaponStats};
 
 use std::fmt;
@@ -59,7 +61,7 @@ impl BlockId {
     pub const FURNACE: Self = Self(19);
     /// 床（家园重生点）。
     pub const BED: Self = Self(20);
-    /// 水（Minecraft 风格流动液体；水位见 [`FluidLevel`]）。
+    /// 水（过渡占位；液量语义未经验证，见 `FluidLevel`）。
     pub const WATER: Self = Self(21);
     /// 绳索（可穿行，可攀爬，便于竖井）。
     pub const ROPE: Self = Self(22);
