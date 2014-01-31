@@ -4,6 +4,7 @@
 
 mod inv;
 mod movement;
+mod replay;
 mod sprite;
 
 pub use inv::{BAG_POCKET_SLOTS, HOTBAR_LEN, Inventory, ItemStack};
