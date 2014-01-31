@@ -8,6 +8,7 @@ mod fluid;
 mod schema;
 mod tile;
 mod weapon;
+mod wld;
 
 pub use biome::{BiomeId, biome_at};
 pub use content::{
@@ -22,6 +23,10 @@ pub use schema::{
 };
 pub use tile::{LiquidKind, SlopeKind, Tile};
 pub use weapon::{WeaponKind, WeaponStats};
+pub use wld::{
+    WORLD_VERSION_1_4_5, WORLD_VERSION_1_4_5_8, WldCell, WldError, WldFileHeader, WldProperties,
+    WldSeedFlags, read_file_header, read_tiles, read_world_properties,
+};
 
 use std::fmt;
 use std::sync::Arc;
