@@ -1,17 +1,17 @@
-//! 城镇 NPC（向导、商人等）。贴图用正版 `NPC_N.xnb`。
+//! 城镇 NPC（向导、商人等）。贴图用 `NPC_N.xnb`。
 
 use spark_core::{Color, Rect};
 use spark_renderer::{DrawList, TextureId};
 
 use crate::housing::HouseSlot;
-use crate::world::{TILE, World, wrap_tx};
+use crate::world::{TILE, World, screen_len, screen_of, wrap_tx};
 
 /// 城镇 NPC 种类。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TownKind {
-    /// 向导（正版 `NPC_22`）。
+    /// 向导（`NPC_22`）。
     Guide,
-    /// 商人（正版 `NPC_17`）。
+    /// 商人（`NPC_17`）。
     Merchant,
 }
 
@@ -116,17 +116,20 @@ impl TownNpc {
     }
 
     pub fn draw(&self, draw: &mut DrawList, cam_x: f32, cam_y: f32, atlas: &NpcAtlas) {
-        let (w, h) = (TILE * (20.0 / 16.0), TILE * (42.0 / 16.0));
-        let sx = self.x - cam_x;
-        let sy = self.y - cam_y;
+        let (w, h) = (
+            screen_len(TILE * (20.0 / 16.0)),
+            screen_len(TILE * (42.0 / 16.0)),
+        );
+        let sx = screen_of(self.x, cam_x);
+        let sy = screen_of(self.y, cam_y);
         if let Some(view) = atlas.view(self.kind) {
             let mut uv = view.uv;
             if self.facing < 0.0 {
                 uv.x += uv.w;
                 uv.w = -uv.w;
             }
-            let sprite_w = atlas.cell_w as f32 * (TILE / 16.0);
-            let sprite_h = atlas.cell_h as f32 * (TILE / 16.0);
+            let sprite_w = screen_len(atlas.cell_w as f32);
+            let sprite_h = screen_len(atlas.cell_h as f32);
             let ox = sx + w * 0.5 - sprite_w * 0.5;
             let oy = sy + h - sprite_h;
             draw.tex_rect(

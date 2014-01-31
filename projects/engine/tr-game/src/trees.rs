@@ -1,4 +1,4 @@
-//! 森林树：正版 `Tree_Tops_0` 树冠 + `Tree_Branches_0` 侧枝。
+//! 森林树：`Tree_Tops_0` 树冠 + `Tree_Branches_0` 侧枝。
 //!
 //! 世界里树仍是一列 `WOOD` 加周围 `LEAF`（碰撞与砍伐不变）。
 //! 画出时不再铺方块，改贴树冠与树干。
@@ -7,7 +7,7 @@ use spark_core::{Color, Rect};
 use spark_renderer::{DrawList, TextureId};
 use tr_core::BlockId;
 
-use crate::world::{TILE, World, x_in_bounds};
+use crate::world::{TILE, World, screen_len, screen_of, x_in_bounds};
 
 /// `Tree_Tops_0`：三帧，步长 82，可画 80。
 const TOP_STRIDE: u32 = 82;
@@ -197,10 +197,10 @@ fn paint_bark(
         16.0 / sheet.w.max(1) as f32,
         16.0 / sheet.h.max(1) as f32,
     );
-    let sy = ty as f32 * TILE - cam_y;
-    let w = TILE * 0.55;
-    let x0 = tx as f32 * TILE - cam_x + (TILE - w) * 0.5;
-    draw.tex_rect(sheet.tex, Rect::new(x0, sy, w, TILE), uv, tint);
+    let sy = screen_of(ty as f32 * TILE, cam_y);
+    let w = screen_len(TILE * 0.55);
+    let x0 = screen_of(tx as f32 * TILE, cam_x) + (screen_len(TILE) - w) * 0.5;
+    draw.tex_rect(sheet.tex, Rect::new(x0, sy, w, screen_len(TILE)), uv, tint);
 }
 
 fn paint_top(
@@ -214,10 +214,15 @@ fn paint_top(
     tint: Color,
 ) {
     let u = (frame * TOP_STRIDE) as f32 / TOP_SHEET_W;
-    let uv = Rect::new(u, 0.0, TOP_CELL as f32 / TOP_SHEET_W, TOP_CELL as f32 / TOP_SHEET_H);
-    let sprite = TILE * (TOP_CELL as f32 / 16.0);
-    let foot_x = tx as f32 * TILE + TILE * 0.5 - cam_x;
-    let foot_y = (top as f32 + 1.0) * TILE - cam_y;
+    let uv = Rect::new(
+        u,
+        0.0,
+        TOP_CELL as f32 / TOP_SHEET_W,
+        TOP_CELL as f32 / TOP_SHEET_H,
+    );
+    let sprite = screen_len(TILE * (TOP_CELL as f32 / 16.0));
+    let foot_x = screen_of(tx as f32 * TILE + TILE * 0.5, cam_x);
+    let foot_y = screen_of((top as f32 + 1.0) * TILE, cam_y);
     draw.tex_rect(
         sheet.tex,
         Rect::new(foot_x - sprite * 0.5, foot_y - sprite, sprite, sprite),
@@ -245,15 +250,15 @@ fn paint_branch(
         BRANCH_CELL as f32 / BRANCH_SHEET_W,
         BRANCH_CELL as f32 / BRANCH_SHEET_H,
     );
-    let sprite = TILE * (BRANCH_CELL as f32 / 16.0);
-    let tile_x = tx as f32 * TILE - cam_x;
-    let tile_y = ty as f32 * TILE - cam_y;
-    // 左枝贴树干右侧向左伸，右枝贴树干左侧向右伸。
+    let sprite = screen_len(TILE * (BRANCH_CELL as f32 / 16.0));
+    let tile_x = screen_of(tx as f32 * TILE, cam_x);
+    let tile_y = screen_of(ty as f32 * TILE, cam_y);
+    let tile_px = screen_len(TILE);
     let x = if side == 0 {
-        tile_x + TILE - sprite
+        tile_x + tile_px - sprite
     } else {
         tile_x
     };
-    let y = tile_y + (TILE - sprite) * 0.5;
+    let y = tile_y + (tile_px - sprite) * 0.5;
     draw.tex_rect(sheet.tex, Rect::new(x, y, sprite, sprite), uv, tint);
 }

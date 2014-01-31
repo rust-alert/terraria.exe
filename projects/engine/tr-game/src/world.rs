@@ -1,19 +1,41 @@
 //! 侧视地表世界：确定性高度 + 方块表 + 地面掉落物。
 //!
 //! 坐标：`y = 0` 为世界顶（天空），`y` 增大向地心。
-//! 有限边界（不回环）；逻辑素材 16 像素格，`TILE` 为屏上 2× 放大（32）。
+//! 有限边界（不回环）。逻辑格固定 16 像素。屏幕 2× 只走 [`DISPLAY_SCALE`]，不写进 `TILE`。
 
 use std::collections::HashMap;
 use std::f32::consts::TAU;
 use tr_core::{BiomeId, BlockId, FluidLevel, ItemId, WallId, biome_at};
 
-/// 约原版「小世界」宽度的 1/10，兼顾可玩宽度与生成耗时。
+/// 约小世界规模宽度的 1/10，兼顾可玩宽度与生成耗时。
 pub const WORLD_W: i32 = 420;
 pub const WORLD_H: i32 = 180;
 /// 出生列（世界中段）。
 pub const SPAWN_TX: i32 = WORLD_W / 2;
-/// 一格 32 屏像素 = 正版 16 像素块的 2 倍显示。物理与图集均按 16 逻辑像素比例。
-pub const TILE: f32 = 32.0;
+/// 逻辑格边长（像素）。碰撞、速度和存档坐标都用这个值，不要改成屏幕放大后的尺寸。
+pub const TILE: f32 = 16.0;
+/// 整数显示倍率。相机把逻辑像素乘这个数得到屏幕像素。
+pub const DISPLAY_SCALE: i32 = 2;
+
+/// 逻辑坐标到屏幕像素：`(world - cam) * DISPLAY_SCALE`。
+pub fn screen_of(world: f32, cam: f32) -> f32 {
+    (world - cam) * DISPLAY_SCALE as f32
+}
+
+/// 逻辑长度到屏幕像素。
+pub fn screen_len(logical: f32) -> f32 {
+    logical * DISPLAY_SCALE as f32
+}
+
+/// 屏幕像素到逻辑坐标。
+pub fn world_of_screen(screen: f32, cam: f32) -> f32 {
+    cam + screen / DISPLAY_SCALE as f32
+}
+
+/// 屏幕宽度对应的逻辑视口宽度。
+pub fn view_extent(screen_px: f32) -> f32 {
+    screen_px / DISPLAY_SCALE as f32
+}
 
 /// 世界宽度（世界单位）。
 pub fn world_pixel_w() -> f32 {
@@ -159,7 +181,7 @@ impl World {
 
         w.plant_trees();
         w.carve_and_fill_lakes();
-        // 不再烘焙 `0..=8` 流动：湖泊保持源水静置，待原版液量模型替换。
+        // 不再烘焙 `0..=8` 流动：湖泊保持源水静置，待后续液量模型替换。
         w.carve_shallow_caves();
         w.place_copper_veins();
 
@@ -1238,4 +1260,21 @@ fn hash2(seed: u64, x: i32, y: i32) -> u64 {
         seed ^ x.wrapping_mul(0x9E3779B97F4A7C15) ^ (y as u64).wrapping_mul(0xBF58476D1CE4E5B9);
     v = (v ^ (v >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
     v ^ (v >> 31)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn logical_tile_is_16_and_display_is_integer_2x() {
+        assert_eq!(TILE, 16.0);
+        assert_eq!(DISPLAY_SCALE, 2);
+        assert_eq!(screen_len(TILE), 32.0);
+        assert_eq!(screen_of(TILE, 0.0), 32.0);
+        assert_eq!(world_of_screen(32.0, 0.0), TILE);
+        assert_eq!(view_extent(1280.0), 640.0);
+        let back = world_of_screen(screen_of(48.0, 10.0), 10.0);
+        assert!((back - 48.0).abs() < 1e-4);
+    }
 }

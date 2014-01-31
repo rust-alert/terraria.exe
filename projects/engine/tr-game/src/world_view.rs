@@ -6,7 +6,9 @@ use tr_core::{BiomeId, BlockId, ItemId};
 
 use crate::app::TerrariaApp;
 use crate::lightmap::{LightMap, LightSample};
-use crate::world::{TILE, WORLD_H, World, wrap_delta_x, wrap_tx};
+use crate::world::{
+    TILE, WORLD_H, World, screen_len, screen_of, view_extent, wrap_delta_x, wrap_tx,
+};
 
 fn paint_cracks(draw: &mut DrawList, sx: f32, sy: f32, ratio: f32) {
     let a = (0.35 + ratio * 0.55).clamp(0.0, 0.9);
@@ -693,10 +695,13 @@ impl TerrariaApp {
         );
         paint_biome_backdrop(draw, world, sw, sh, self.cam_x, self.cam_y, dayness);
 
+        let view_w = view_extent(sw);
+        let view_h = view_extent(sh);
+        let tile_px = screen_len(TILE);
         let x0 = (self.cam_x / TILE).floor() as i32 - 1;
         let y0 = (self.cam_y / TILE).floor() as i32 - 1;
-        let x1 = ((self.cam_x + sw) / TILE).ceil() as i32 + 1;
-        let y1 = ((self.cam_y + sh) / TILE).ceil() as i32 + 1;
+        let x1 = ((self.cam_x + view_w) / TILE).ceil() as i32 + 1;
+        let y1 = ((self.cam_y + view_h) / TILE).ceil() as i32 + 1;
         let lights = collect_lights(world, x0, y0, x1, y1);
         let lmap = LightMap::build(world, x0, y0, x1, y1, sky_amb, dayness);
 
@@ -720,25 +725,25 @@ impl TerrariaApp {
                     continue;
                 }
                 let light = lmap.sample(tx, ty);
-                let sx = tx as f32 * TILE - self.cam_x;
-                let sy = ty as f32 * TILE - self.cam_y;
+                let sx = screen_of(tx as f32 * TILE, self.cam_x);
+                let sy = screen_of(ty as f32 * TILE, self.cam_y);
                 if let Some(view) = self.tile_atlas.wall_framed(world, tx, ty) {
                     draw.tex_rect(
                         view.tex,
-                        Rect::new(sx, sy, TILE, TILE),
+                        Rect::new(sx, sy, tile_px, tile_px),
                         view.uv,
                         shade(Color::rgb(1.0, 1.0, 1.0), light),
                     );
                 } else if let Some(view) = self.tile_atlas.wall(wall) {
                     draw.tex_rect(
                         view.tex,
-                        Rect::new(sx, sy, TILE, TILE),
+                        Rect::new(sx, sy, tile_px, tile_px),
                         varied_uv(view.uv, tx, ty, true),
                         shade(Color::rgb(1.0, 1.0, 1.0), light),
                     );
                 } else {
                     draw.fill_rect(
-                        Rect::new(sx, sy, TILE, TILE),
+                        Rect::new(sx, sy, tile_px, tile_px),
                         shade(Color::rgb(r, g, b), light),
                     );
                 }
@@ -747,7 +752,7 @@ impl TerrariaApp {
                     if let Some(view) = self.tile_atlas.crack() {
                         draw.tex_rect(
                             view.tex,
-                            Rect::new(sx, sy, TILE, TILE),
+                            Rect::new(sx, sy, tile_px, tile_px),
                             view.uv,
                             Color::rgba(1.0, 1.0, 1.0, (0.25 + crack * 0.45).clamp(0.0, 0.75)),
                         );
@@ -767,19 +772,19 @@ impl TerrariaApp {
                     let amb = sky_amb * 0.35;
                     if light.intensity() > amb + 0.06 {
                         let glow = ((light.intensity() - amb) * 0.45).clamp(0.0, 0.32);
-                        let sx = tx as f32 * TILE - self.cam_x;
-                        let sy = ty as f32 * TILE - self.cam_y;
+                        let sx = screen_of(tx as f32 * TILE, self.cam_x);
+                        let sy = screen_of(ty as f32 * TILE, self.cam_y);
                         // 空格余晖跟局部光照色温，不再死橙。
                         draw.fill_rect(
-                            Rect::new(sx, sy, TILE, TILE),
+                            Rect::new(sx, sy, tile_px, tile_px),
                             Color::rgba(light.r, light.g * 0.85, light.b * 0.55, glow),
                         );
                     }
                     continue;
                 }
                 let light = lmap.sample(tx, ty);
-                let sx = tx as f32 * TILE - self.cam_x;
-                let sy = ty as f32 * TILE - self.cam_y;
+                let sx = screen_of(tx as f32 * TILE, self.cam_x);
+                let sy = screen_of(ty as f32 * TILE, self.cam_y);
                 if id == BlockId::WATER {
                     self.draw_water_tile(draw, world, tx, ty, sx, sy, light);
                     continue;
@@ -882,7 +887,7 @@ impl TerrariaApp {
                             shade(Color::rgb(0.8, 0.55, 0.3), light),
                         );
                     } else {
-                        draw.fill_rect(Rect::new(sx, sy, TILE, TILE), shade(color, light));
+                        draw.fill_rect(Rect::new(sx, sy, tile_px, tile_px), shade(color, light));
                     }
                 }
 
@@ -933,7 +938,7 @@ impl TerrariaApp {
                     if let Some(view) = self.tile_atlas.crack() {
                         draw.tex_rect(
                             view.tex,
-                            Rect::new(sx, sy, TILE, TILE),
+                            Rect::new(sx, sy, tile_px, tile_px),
                             view.uv,
                             Color::rgba(1.0, 1.0, 1.0, (0.35 + crack * 0.55).clamp(0.0, 0.9)),
                         );
@@ -975,9 +980,9 @@ impl TerrariaApp {
         );
 
         for d in &world.drops {
-            let sx = d.x - self.cam_x;
-            let bob = (d.bob * 6.0).sin() * 2.0;
-            let sy = d.y - self.cam_y + bob;
+            let sx = screen_of(d.x, self.cam_x);
+            let bob = screen_len((d.bob * 6.0).sin() * 2.0);
+            let sy = screen_of(d.y, self.cam_y) + bob;
             let tx = (d.x / TILE).floor() as i32;
             let ty = (d.y / TILE).floor() as i32;
             let amb = lmap.sample(tx, ty);
@@ -1019,9 +1024,9 @@ impl TerrariaApp {
                 Color::rgba(0.95, 0.45, 0.35, a)
             };
             for &(tx, ty) in &self.house_query_tiles {
-                let sx = tx as f32 * TILE - self.cam_x;
-                let sy = ty as f32 * TILE - self.cam_y;
-                draw.fill_rect(Rect::new(sx, sy, TILE, TILE), c);
+                let sx = screen_of(tx as f32 * TILE, self.cam_x);
+                let sy = screen_of(ty as f32 * TILE, self.cam_y);
+                draw.fill_rect(Rect::new(sx, sy, tile_px, tile_px), c);
             }
         }
         for e in &self.enemies {
@@ -1077,8 +1082,9 @@ impl TerrariaApp {
     ) {
         let lv = world.fluid_level(tx, ty);
         let fill = lv.fill_ratio().clamp(0.05, 1.0);
-        let h = TILE * fill;
-        let top = sy + TILE - h;
+        let tile_px = screen_len(TILE);
+        let h = tile_px * fill;
+        let top = sy + tile_px - h;
         let deep = lv.is_source() || lv.is_falling();
         let base_a = if deep { 0.58 } else { 0.45 };
         let body = shade(
@@ -1090,7 +1096,7 @@ impl TerrariaApp {
             ),
             light.max_with(0.35),
         );
-        draw.fill_rect(Rect::new(sx, top, TILE, h), body);
+        draw.fill_rect(Rect::new(sx, top, tile_px, h), body);
 
         // 上方是空气/非水 → 画水面高光与轻波动
         let above = world.get(tx, ty - 1);
@@ -1155,7 +1161,7 @@ impl TerrariaApp {
         } else {
             // 淹没柱：略加深，无高光
             draw.fill_rect(
-                Rect::new(sx, sy, TILE, TILE),
+                Rect::new(sx, sy, tile_px, tile_px),
                 shade(crate::palette::WATER.shade, light.max_with(0.3)),
             );
         }

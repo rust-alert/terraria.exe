@@ -6,7 +6,7 @@ use tr_core::{DamageHit, DamageType, ItemId, WeaponKind, WeaponStats};
 
 use crate::enemy::Enemy;
 use crate::player::Player;
-use crate::world::{TILE, WORLD_H, World, world_pixel_w, wrap_delta_x, wrap_tx, wrap_xf};
+use crate::world::{TILE, WORLD_H, World, screen_len, screen_of, wrap_delta_x, wrap_tx, wrap_xf};
 
 #[derive(Debug, Clone)]
 pub struct Projectile {
@@ -23,19 +23,13 @@ pub struct Projectile {
 
 impl Projectile {
     pub fn draw(&self, draw: &mut DrawList, cam_x: f32, cam_y: f32) {
-        let mut sx = self.x - cam_x;
-        let w = world_pixel_w();
-        if sx > w * 0.5 {
-            sx -= w;
-        } else if sx < -w * 0.5 {
-            sx += w;
-        }
-        let sy = self.y - cam_y;
-        let size = if matches!(self.dtype, DamageType::Elemental) {
+        let sx = screen_of(self.x, cam_x);
+        let sy = screen_of(self.y, cam_y);
+        let size = screen_len(if matches!(self.dtype, DamageType::Elemental) {
             7.0
         } else {
             5.0
-        };
+        });
         draw.fill_rect(
             Rect::new(sx - size * 0.5, sy - size * 0.5, size, size),
             self.color,

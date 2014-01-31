@@ -4,13 +4,13 @@ use spark_core::{Color, Rect};
 use spark_renderer::{DrawList, TextureId};
 
 use crate::player::{HIT_H, HIT_W, Player};
-use crate::world::{TILE, wrap_delta_x};
+use crate::world::{DISPLAY_SCALE, TILE, screen_len, screen_of, wrap_delta_x};
 
 const SPRITE_W: usize = 11;
 const SPRITE_H: usize = 24;
 /// idle / walk×3 / jump / fall
 const SPRITE_FRAMES: usize = 6;
-const SPRITE_SCALE: f32 = TILE * 3.0 / SPRITE_H as f32;
+const SPRITE_SCALE: f32 = TILE * (DISPLAY_SCALE as f32) * 3.0 / SPRITE_H as f32;
 
 /// 玩家动画态（四态 + 步行子帧）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,7 +84,7 @@ impl PlayerAtlas {
             let Ok(tex) = crate::xnb::decode_texture_file(path) else {
                 continue;
             };
-            // 正版默认体型条：宽 40，高约 1118（约 20×56 帧）。
+            // 默认体型条：宽 40，高约 1118（约 20×56 帧）。
             if tex.width != 40 || tex.height < 1000 {
                 continue;
             }
@@ -174,13 +174,11 @@ impl Player {
             PlayerAnim::Fall => 5,
         };
 
-        let scale = TILE / 16.0;
-        let sprite_w = atlas.cell_w as f32 * scale;
-        let sprite_h = atlas.cell_h as f32 * scale;
-        // 回环：把碰撞盒左缘解到相机附近的周期像再画
+        let sprite_w = screen_len(atlas.cell_w as f32);
+        let sprite_h = screen_len(atlas.cell_h as f32);
         let px = cam_x + wrap_delta_x(cam_x, self.x);
-        let origin_x = px + HIT_W * 0.5 - sprite_w * 0.5 - cam_x;
-        let origin_y = self.y + HIT_H - sprite_h - cam_y;
+        let origin_x = screen_of(px + HIT_W * 0.5, cam_x) - sprite_w * 0.5;
+        let origin_y = screen_of(self.y + HIT_H, cam_y) - sprite_h;
         let dest = Rect::new(origin_x, origin_y, sprite_w, sprite_h);
 
         paint_ground_shadow(draw, self, cam_x, cam_y, sprite_w);
@@ -245,8 +243,8 @@ fn paint_ground_shadow(
     sprite_w: f32,
 ) {
     let px = cam_x + wrap_delta_x(cam_x, player.x);
-    let foot_x = px + HIT_W * 0.5 - cam_x;
-    let foot_y = player.y + HIT_H - cam_y;
+    let foot_x = screen_of(px + HIT_W * 0.5, cam_x);
+    let foot_y = screen_of(player.y + HIT_H, cam_y);
 
     let height = if player.on_ground {
         0.0

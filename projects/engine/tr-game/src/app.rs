@@ -19,7 +19,7 @@ use crate::sky::SkyAtlas;
 use crate::tiles::TileAtlas;
 use crate::trees::TreeAtlas;
 use crate::weapon::Projectile;
-use crate::world::World;
+use crate::world::{World, view_extent};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Screen {
@@ -72,7 +72,7 @@ pub struct TerrariaApp {
     pub(crate) map_open: bool,
     /// 程序化提示音（设备不可用时静默）。
     pub(crate) audio: AudioBus,
-    /// 正版音效库。
+    /// Content 音效库。
     pub(crate) sfx: SfxBank,
     /// 打开的木箱格坐标。
     pub(crate) chest_open: Option<(i32, i32)>,
@@ -82,13 +82,13 @@ pub struct TerrariaApp {
     pub(crate) debug_hud: bool,
     /// HUD 热键图标图集（程序化占位）。
     pub(crate) icon_atlas: IconAtlas,
-    /// 正版 HUD 铬件（心 / 魔力 / 槽底）。
+    /// Content HUD 铬件（心 / 魔力 / 槽底）。
     pub(crate) hud_chrome: HudChrome,
     /// 世界瓦片图集。
     pub(crate) tile_atlas: TileAtlas,
     /// 天空视差贴图层（PNG 优先）。
     pub(crate) sky_atlas: SkyAtlas,
-    /// 正版森林树冠 / 侧枝。
+    /// Content 森林树冠 / 侧枝。
     pub(crate) tree_atlas: TreeAtlas,
     /// 玩家像素条带。
     pub(crate) player_atlas: PlayerAtlas,
@@ -98,9 +98,9 @@ pub struct TerrariaApp {
     pub(crate) damage_fx: Vec<DamageFloater>,
     /// 落地 / 挖掘尘粒。
     pub(crate) dust_fx: Vec<DustParticle>,
-    /// 内容包解析出的路径与正版证明贴图。
+    /// 内容包解析出的路径与 Content 证明贴图。
     pub(crate) content_assets: ContentAssets,
-    /// 正版 XNB 对照条的 GPU 纹理。
+    /// Content XNB 对照条的 GPU 纹理。
     pub(crate) proof_gpu: ProofGpu,
     /// 鼠标拖着的物品堆（背包/箱子光标）。
     pub(crate) cursor_stack: Option<ItemStack>,
@@ -181,8 +181,8 @@ impl TerrariaApp {
             let _ = p.inv.add(ItemId::TORCH, 4);
             p.select_item(ItemId::WOOD);
         }
-        self.cam_x = sx - 640.0;
-        self.cam_y = sy - 360.0;
+        self.cam_x = sx - view_extent(1280.0) * 0.5;
+        self.cam_y = sy - view_extent(720.0) * 0.5;
         self.world = Some(world);
         self.enemies = enemies;
         self.town_npcs = vec![spawn_guide(self.world.as_ref().unwrap())];

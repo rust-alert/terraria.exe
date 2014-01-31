@@ -5,7 +5,7 @@ use spark_renderer::DrawList;
 use tr_core::ItemId;
 
 use crate::player::Player;
-use crate::world::{TILE, WORLD_H, World, world_pixel_w, wrap_delta_x, wrap_tx, wrap_xf};
+use crate::world::{TILE, WORLD_H, World, screen_of, wrap_delta_x, wrap_tx, wrap_xf};
 
 const HOOK_SPEED: f32 = TILE * 38.0;
 const MAX_LEN: f32 = TILE * 18.0;
@@ -181,21 +181,10 @@ pub fn draw(player: &Player, draw: &mut DrawList, cam_x: f32, cam_y: f32) {
     let ox = px + pw * 0.5;
     let oy = py + ph * 0.35;
 
-    let w = world_pixel_w();
-    let mut sx0 = ox - cam_x;
-    let mut sx1 = tx - cam_x;
-    if sx0 > w * 0.5 {
-        sx0 -= w;
-    } else if sx0 < -w * 0.5 {
-        sx0 += w;
-    }
-    if sx1 > w * 0.5 {
-        sx1 -= w;
-    } else if sx1 < -w * 0.5 {
-        sx1 += w;
-    }
-    let sy0 = oy - cam_y;
-    let sy1 = ty - cam_y;
+    let sx0 = screen_of(ox, cam_x);
+    let sy0 = screen_of(oy, cam_y);
+    let sx1 = screen_of(tx, cam_x);
+    let sy1 = screen_of(ty, cam_y);
 
     let segs = 18;
     let rope = Color::rgb(0.72, 0.55, 0.32);

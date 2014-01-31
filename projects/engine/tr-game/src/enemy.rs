@@ -1,4 +1,4 @@
-//! 地表敌怪：史莱姆、夜间僵尸与恶魔眼（正版 `NPC_1` / `NPC_3` / `NPC_2`）。
+//! 地表敌怪：史莱姆、夜间僵尸与恶魔眼（`NPC_1` / `NPC_3` / `NPC_2`）。
 
 use spark_core::{Color, Rect};
 use spark_renderer::DrawList;
@@ -6,7 +6,8 @@ use tr_core::{DamageHit, ItemId, ResistProfile, resolve_damage};
 
 use crate::player::Player;
 use crate::world::{
-    TILE, WORLD_H, WORLD_W, World, tile_x_near, world_pixel_w, wrap_delta_x, wrap_tx,
+    TILE, WORLD_H, WORLD_W, World, screen_len, screen_of, tile_x_near, world_pixel_w, wrap_delta_x,
+    wrap_tx,
 };
 
 const GRAVITY: f32 = TILE * 40.0;
@@ -249,15 +250,7 @@ impl Enemy {
     }
 
     fn screen_x(&self, cam_x: f32) -> f32 {
-        let sx = self.x - cam_x;
-        let w = world_pixel_w();
-        let mut d = sx;
-        if d > w * 0.5 {
-            d -= w;
-        } else if d < -w * 0.5 {
-            d += w;
-        }
-        d
+        screen_of(self.x, cam_x)
     }
 
     fn draw_zombie(
@@ -268,15 +261,15 @@ impl Enemy {
         view: Option<crate::npc::NpcView>,
         cell: (u32, u32),
     ) {
-        let bw = self.kind.width();
-        let bh = self.kind.height();
+        let bw = screen_len(self.kind.width());
+        let bh = screen_len(self.kind.height());
         let sx = self.screen_x(cam_x);
         let bob = if self.kind.flies() {
-            self.bob.sin() * 6.0
+            screen_len(self.bob.sin() * 6.0)
         } else {
             0.0
         };
-        let sy = self.y - cam_y + bob;
+        let sy = screen_of(self.y, cam_y) + bob;
         let flash = self.hurt_cd > 0.0 || self.windup_t > 0.0;
         if let Some(view) = view {
             let mut uv = view.uv;
@@ -284,8 +277,8 @@ impl Enemy {
                 uv.x += uv.w;
                 uv.w = -uv.w;
             }
-            let sprite_w = cell.0 as f32 * (TILE / 16.0);
-            let sprite_h = cell.1 as f32 * (TILE / 16.0);
+            let sprite_w = screen_len(cell.0 as f32);
+            let sprite_h = screen_len(cell.1 as f32);
             let ox = sx + bw * 0.5 - sprite_w * 0.5;
             let oy = sy + bh - sprite_h;
             let tint = if flash {
@@ -325,16 +318,18 @@ impl Enemy {
         slime: Option<crate::tiles::TileView>,
     ) {
         let sx = self.screen_x(cam_x);
-        let sy = self.y - cam_y;
+        let sy = screen_of(self.y, cam_y);
         let flash = self.hurt_cd > 0.0 || self.windup_t > 0.0;
         let squash = 1.0 + 0.12 * self.bob.sin();
         let stretch = 1.0 - 0.10 * self.bob.sin();
-        let bw = SLIME_W * squash;
-        let bh = SLIME_H * stretch;
-        let ox = sx + (SLIME_W - bw) * 0.5;
-        let oy = sy + (SLIME_H - bh);
-        let foot_x = sx + SLIME_W * 0.5;
-        let foot_y = sy + SLIME_H;
+        let slime_w = screen_len(SLIME_W);
+        let slime_h = screen_len(SLIME_H);
+        let bw = slime_w * squash;
+        let bh = slime_h * stretch;
+        let ox = sx + (slime_w - bw) * 0.5;
+        let oy = sy + (slime_h - bh);
+        let foot_x = sx + slime_w * 0.5;
+        let foot_y = sy + slime_h;
         // 前摇优先：风红脉动；否则追击速度脉动。
         let chase = (self.vx.abs() / (TILE * 4.0)).clamp(0.0, 1.0);
         let telegraph = if self.windup_t > 0.0 {
@@ -347,7 +342,7 @@ impl Enemy {
         for layer in 0..3 {
             let t = layer as f32 / 2.0;
             let a = 0.38 * (1.0 - t * 0.4);
-            let rw = SLIME_W * (0.38 + t * 0.18);
+            let rw = slime_w * (0.38 + t * 0.18);
             let rh = 2.2 + t * 1.4;
             let color = Color::rgba(0.02, 0.02, 0.06, a);
             let y0 = (foot_y - rh).floor() as i32;
@@ -446,11 +441,11 @@ impl Enemy {
 
         let ratio = (self.hp / self.max_hp).clamp(0.0, 1.0);
         draw.fill_rect(
-            Rect::new(sx, sy - 6.0, SLIME_W, 3.0),
+            Rect::new(sx, sy - screen_len(6.0), slime_w, screen_len(3.0)),
             Color::rgb(0.12, 0.08, 0.14),
         );
         draw.fill_rect(
-            Rect::new(sx, sy - 6.0, SLIME_W * ratio, 3.0),
+            Rect::new(sx, sy - screen_len(6.0), slime_w * ratio, screen_len(3.0)),
             Color::rgb(0.85, 0.28, 0.42),
         );
     }
@@ -543,8 +538,7 @@ pub fn update_enemies(
             e.vy = if chase {
                 dy.signum() * TILE * 2.6 + (e.bob * 2.1).sin() * TILE * 0.3
             } else {
-                (hover - e.y).clamp(-TILE * 3.0, TILE * 3.0) * 1.4
-                    + e.bob.sin() * TILE * 0.35
+                (hover - e.y).clamp(-TILE * 3.0, TILE * 3.0) * 1.4 + e.bob.sin() * TILE * 0.35
             };
         } else {
             let chase_r = TILE * (12.0 + night * 8.0);

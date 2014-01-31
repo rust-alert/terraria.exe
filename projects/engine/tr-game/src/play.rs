@@ -9,7 +9,9 @@ use crate::enemy::{Enemy, update_enemies};
 use crate::player::Player;
 use crate::save::{SessionExtra, load_session, save_session};
 use crate::sfx;
-use crate::world::{TILE, WORLD_H, World, wrap_delta_x, wrap_tx, wrap_xf};
+use crate::world::{
+    TILE, WORLD_H, World, view_extent, world_of_screen, wrap_delta_x, wrap_tx, wrap_xf,
+};
 
 use crate::app::{Screen, TerrariaApp};
 
@@ -111,7 +113,7 @@ impl TerrariaApp {
             }
         }
 
-        // 开发会话快照（非正版 .wld）
+        // 开发会话快照（非 `.wld`）
         if frame.input.key_pressed(Key::F5) {
             if let (Some(world), Some(player)) = (self.world.as_ref(), self.player.as_ref()) {
                 let extra = SessionExtra {
@@ -194,7 +196,7 @@ impl TerrariaApp {
             }
             world.tick_drops(frame.dt);
             world.tick_growth(frame.dt);
-            // 流体步进已冻结：当前为未经验证的水位模型，待原版 0..=255 液量替换。
+            // 流体步进已冻结：当前为未经验证的水位模型，待后续 0..=255 液量替换。
             let night_cap = if night > 0.85 { 16 } else { 12 };
             if night > 0.55 && self.enemies.len() < night_cap {
                 maybe_spawn_night_enemy(world, &mut self.enemies, player, night);
@@ -351,8 +353,8 @@ impl TerrariaApp {
                 }
             }
 
-            let tx = ((mx + self.cam_x) / TILE).floor() as i32;
-            let ty = ((my + self.cam_y) / TILE).floor() as i32;
+            let tx = (world_of_screen(mx, self.cam_x) / TILE).floor() as i32;
+            let ty = (world_of_screen(my, self.cam_y) / TILE).floor() as i32;
 
             if !over_hud
                 && !self.craft_open
@@ -393,12 +395,14 @@ impl TerrariaApp {
             }
 
             let (px, py, pw, ph) = player.hitbox();
-            let target_x = px + pw * 0.5 - frame.screen_w * 0.5;
-            let target_y = py + ph * 0.5 - frame.screen_h * 0.5;
+            let view_w = view_extent(frame.screen_w);
+            let view_h = view_extent(frame.screen_h);
+            let target_x = px + pw * 0.5 - view_w * 0.5;
+            let target_y = py + ph * 0.5 - view_h * 0.5;
             let dx = wrap_delta_x(self.cam_x, target_x);
             self.cam_x = wrap_xf(self.cam_x + dx * (1.0 - (-8.0 * frame.dt).exp()));
             self.cam_y += (target_y - self.cam_y) * (1.0 - (-8.0 * frame.dt).exp());
-            let max_y = WORLD_H as f32 * TILE - frame.screen_h;
+            let max_y = WORLD_H as f32 * TILE - view_h;
             self.cam_y = self.cam_y.clamp(0.0, max_y.max(0.0));
         }
 
