@@ -39,14 +39,13 @@ impl Player {
     }
 }
 
-struct PlayerLayer {
-    tex: TextureId,
-    src_h: u32,
-}
+/// 正版竖条单帧尺寸。
+const VANILLA_CELL_W: u32 = 40;
+const VANILLA_CELL_H: u32 = 56;
 
-/// 玩家图层。`columns == 1` 时按 `cell_h` 从贴图高度切竖直帧，否则按列切水平条。
+/// 玩家图集：已合成的横条（每帧一列），或回退像素条。
 pub struct PlayerAtlas {
-    layers: Vec<PlayerLayer>,
+    tex: Option<TextureId>,
     cell_w: u32,
     cell_h: u32,
     columns: u32,
@@ -56,7 +55,7 @@ pub struct PlayerAtlas {
 impl PlayerAtlas {
     pub fn new() -> Self {
         Self {
-            layers: Vec::new(),
+            tex: None,
             cell_w: SPRITE_W as u32,
             cell_h: SPRITE_H as u32,
             columns: SPRITE_FRAMES as u32,
@@ -69,42 +68,86 @@ impl PlayerAtlas {
             return;
         }
         self.ready = true;
-        let mut paths: Vec<&std::path::Path> = assets
-            .player_sheets
-            .iter()
-            .map(std::path::PathBuf::as_path)
-            .filter(|p| {
-                let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                // 经典竖条图层：`Player_0_0`…眼睛/头/躯干等；排除宽图与短条。
-                name.starts_with("Player_0_") && !name.contains("_13") && !name.contains("_15")
-            })
-            .collect();
-        paths.sort_by_key(|p| player_layer_order(p));
-        for path in paths {
-            let Ok(tex) = crate::xnb::decode_texture_file(path) else {
+        if self.try_upload_vanilla(draw, assets) {
+            return;
+        }
+        self.upload_fallback(draw);
+    }
+
+    /// 按 `PlayerTextureID` 0..=12 取层，CPU alpha 合成后再上传，避免多层 `tex_rect` 叠坏躯干。
+    fn try_upload_vanilla(
+        &mut self,
+        draw: &mut DrawList,
+        assets: &crate::content_boot::ContentAssets,
+    ) -> bool {
+        // 自下而上：腿 → 身 → 臂 → 头 → 眼。只装 0..=12，排除 Extra / EyeBlink。
+        const ORDER: &[u8] = &[10, 11, 12, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2];
+        let mut layers: Vec<(u8, crate::xnb::RgbaTexture)> = Vec::new();
+        for &id in ORDER {
+            let Some(path) = find_player_layer(assets, id) else {
                 continue;
             };
-            // 默认体型条：宽 40，高约 1118（约 20×56 帧）。
-            if tex.width != 40 || tex.height < 1000 {
+            let Ok(tex) = crate::xnb::decode_texture_file(path) else {
+                tracing::warn!(id, path = %path.display(), "玩家图层解码失败");
+                continue;
+            };
+            if tex.width != VANILLA_CELL_W || tex.height < VANILLA_CELL_H {
+                tracing::warn!(
+                    id,
+                    w = tex.width,
+                    h = tex.height,
+                    "玩家图层尺寸不符，已跳过"
+                );
                 continue;
             }
-            match draw.create_texture(tex.width, tex.height, tex.rgba) {
-                Ok(id) => {
-                    self.cell_w = 40;
-                    self.cell_h = 56;
-                    self.columns = 1;
-                    self.layers.push(PlayerLayer {
-                        tex: id,
-                        src_h: tex.height,
-                    });
-                }
-                Err(e) => tracing::warn!(?e, "玩家图层上传失败"),
+            layers.push((id, tex));
+        }
+        let has_head = layers.iter().any(|(id, _)| *id == 0);
+        let has_torso = layers.iter().any(|(id, _)| *id == 3 || *id == 6);
+        let has_legs = layers.iter().any(|(id, _)| *id == 10 || *id == 12);
+        if !has_head || !has_torso || !has_legs {
+            tracing::warn!(
+                n = layers.len(),
+                has_head,
+                has_torso,
+                has_legs,
+                "玩家必要图层不齐，回退像素精灵"
+            );
+            return false;
+        }
+
+        let sheet_h = layers
+            .iter()
+            .map(|(_, t)| t.height)
+            .min()
+            .unwrap_or(VANILLA_CELL_H);
+        let rows = (sheet_h / VANILLA_CELL_H).max(1);
+        let out_w = VANILLA_CELL_W * SPRITE_FRAMES as u32;
+        let out_h = VANILLA_CELL_H;
+        let mut rgba = vec![0u8; (out_w * out_h * 4) as usize];
+
+        for anim in 0..SPRITE_FRAMES as u32 {
+            let src_row = vanilla_body_row(anim as i32, rows);
+            let dst_x0 = anim * VANILLA_CELL_W;
+            for (id, tex) in &layers {
+                let tint = layer_tint(*id);
+                blit_layer_frame(&mut rgba, out_w, dst_x0, tex, src_row, tint);
             }
         }
-        if self.layers.is_empty() {
-            self.upload_fallback(draw);
-        } else {
-            tracing::info!(n = self.layers.len(), "玩家图层已上传");
+
+        match draw.create_texture(out_w, out_h, rgba) {
+            Ok(id) => {
+                self.tex = Some(id);
+                self.cell_w = VANILLA_CELL_W;
+                self.cell_h = VANILLA_CELL_H;
+                self.columns = SPRITE_FRAMES as u32;
+                tracing::info!(n = layers.len(), "玩家合成图集已上传");
+                true
+            }
+            Err(e) => {
+                tracing::warn!(?e, "玩家合成图集上传失败");
+                false
+            }
         }
     }
 
@@ -134,33 +177,23 @@ impl PlayerAtlas {
         self.cell_h = SPRITE_H as u32;
         self.columns = SPRITE_FRAMES as u32;
         if let Ok(id) = draw.create_texture(w, h, rgba) {
-            self.layers.push(PlayerLayer { tex: id, src_h: h });
+            self.tex = Some(id);
         }
     }
 
     pub(crate) fn paint_icon(&self, draw: &mut DrawList, dest: Rect) {
-        if self.layers.is_empty() {
+        let Some(tex) = self.tex else {
             return;
-        }
-        for layer in &self.layers {
-            let uv = self.frame_uv(0, layer.src_h);
-            draw.tex_rect(layer.tex, dest, uv, Color::rgb(1.0, 1.0, 1.0));
-        }
+        };
+        let uv = self.frame_uv(0);
+        draw.tex_rect(tex, dest, uv, Color::rgb(1.0, 1.0, 1.0));
     }
 
-    fn frame_uv(&self, frame: u32, src_h: u32) -> Rect {
-        if self.columns <= 1 {
-            let cell = self.cell_h.max(1);
-            let rows = (src_h / cell).max(1);
-            let frame = frame % rows;
-            let h = cell as f32 / src_h.max(1) as f32;
-            Rect::new(0.0, frame as f32 * h, 1.0, h)
-        } else {
-            let cols = self.columns.max(1);
-            let frame = frame % cols;
-            let w = 1.0 / cols as f32;
-            Rect::new(frame as f32 * w, 0.0, w, 1.0)
-        }
+    fn frame_uv(&self, frame: u32) -> Rect {
+        let cols = self.columns.max(1);
+        let frame = frame % cols;
+        let w = 1.0 / cols as f32;
+        Rect::new(frame as f32 * w, 0.0, w, 1.0)
     }
 }
 
@@ -196,16 +229,14 @@ impl Player {
             Color::rgb(1.0, 1.0, 1.0)
         };
 
-        if !atlas.layers.is_empty() {
+        if let Some(tex) = atlas.tex {
             let frame = walk_frame.max(0) as u32;
-            for layer in &atlas.layers {
-                let mut uv = atlas.frame_uv(frame, layer.src_h);
-                if !facing_right {
-                    uv.x += uv.w;
-                    uv.w = -uv.w;
-                }
-                draw.tex_rect(layer.tex, dest, uv, hurt_tint);
+            let mut uv = atlas.frame_uv(frame);
+            if !facing_right {
+                uv.x += uv.w;
+                uv.w = -uv.w;
             }
+            draw.tex_rect(tex, dest, uv, hurt_tint);
             return;
         }
 
@@ -553,13 +584,152 @@ fn put(m: &mut [[u8; SPRITE_W]; SPRITE_H], cells: &[(usize, usize, u8)]) {
     }
 }
 
-fn player_layer_order(path: &std::path::Path) -> u32 {
-    let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-    if name.starts_with("Player_Hair_") {
-        return 10_000;
+fn find_player_layer(
+    assets: &crate::content_boot::ContentAssets,
+    id: u8,
+) -> Option<&std::path::Path> {
+    let needle = format!("Player_0_{id}.xnb");
+    assets
+        .player_sheets
+        .iter()
+        .find(|p| p.file_name().and_then(|s| s.to_str()) == Some(needle.as_str()))
+        .map(std::path::PathBuf::as_path)
+}
+
+/// 把玩法动画帧映射到正版竖条行号（身/头共用）。
+fn vanilla_body_row(anim: i32, rows: u32) -> u32 {
+    let row = match anim {
+        0 => 0u32,
+        1 => 6,
+        2 => 7,
+        3 => 8,
+        4 | 5 => 5,
+        _ => 0,
+    };
+    row.min(rows.saturating_sub(1))
+}
+
+/// 默认角色染色。皮肤层贴图本身已带肤色，乘白色；衣物层为灰度，乘衣服色。
+fn layer_tint(id: u8) -> Color {
+    match id {
+        // Undershirt / ArmUndershirt
+        4 | 8 => Color::rgb(160.0 / 255.0, 180.0 / 255.0, 215.0 / 255.0),
+        // Shirt
+        6 => Color::rgb(175.0 / 255.0, 75.0 / 255.0, 75.0 / 255.0),
+        // Pants
+        11 => Color::rgb(255.0 / 255.0, 230.0 / 255.0, 175.0 / 255.0),
+        // Shoes
+        12 => Color::rgb(160.0 / 255.0, 105.0 / 255.0, 60.0 / 255.0),
+        _ => Color::rgb(1.0, 1.0, 1.0),
     }
-    name.strip_prefix("Player_0_")
-        .and_then(|s| s.strip_suffix(".xnb"))
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(9_000)
+}
+
+/// 把源竖条第 `src_row` 帧 tint 后 alpha-over 到合成横条。
+fn blit_layer_frame(
+    dst: &mut [u8],
+    dst_w: u32,
+    dst_x0: u32,
+    src: &crate::xnb::RgbaTexture,
+    src_row: u32,
+    tint: Color,
+) {
+    let y0 = src_row * VANILLA_CELL_H;
+    if y0 + VANILLA_CELL_H > src.height {
+        return;
+    }
+    for ly in 0..VANILLA_CELL_H {
+        for lx in 0..VANILLA_CELL_W {
+            let si = ((y0 + ly) * src.width + lx) * 4;
+            let si = si as usize;
+            if si + 3 >= src.rgba.len() {
+                continue;
+            }
+            let sa = src.rgba[si + 3] as f32 / 255.0;
+            if sa < 1.0 / 255.0 {
+                continue;
+            }
+            let sr = (src.rgba[si] as f32 / 255.0) * tint.r;
+            let sg = (src.rgba[si + 1] as f32 / 255.0) * tint.g;
+            let sb = (src.rgba[si + 2] as f32 / 255.0) * tint.b;
+            let di = ((ly * dst_w + dst_x0 + lx) * 4) as usize;
+            if di + 3 >= dst.len() {
+                continue;
+            }
+            let da = dst[di + 3] as f32 / 255.0;
+            let out_a = sa + da * (1.0 - sa);
+            if out_a < 1.0 / 255.0 {
+                dst[di] = 0;
+                dst[di + 1] = 0;
+                dst[di + 2] = 0;
+                dst[di + 3] = 0;
+                continue;
+            }
+            let dr = dst[di] as f32 / 255.0;
+            let dg = dst[di + 1] as f32 / 255.0;
+            let db = dst[di + 2] as f32 / 255.0;
+            let or = (sr * sa + dr * da * (1.0 - sa)) / out_a;
+            let og = (sg * sa + dg * da * (1.0 - sa)) / out_a;
+            let ob = (sb * sa + db * da * (1.0 - sa)) / out_a;
+            dst[di] = (or * 255.0).round().clamp(0.0, 255.0) as u8;
+            dst[di + 1] = (og * 255.0).round().clamp(0.0, 255.0) as u8;
+            dst[di + 2] = (ob * 255.0).round().clamp(0.0, 255.0) as u8;
+            dst[di + 3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vanilla_row_mapping_stays_in_sheet() {
+        assert_eq!(vanilla_body_row(0, 20), 0);
+        assert_eq!(vanilla_body_row(1, 20), 6);
+        assert_eq!(vanilla_body_row(5, 20), 5);
+        assert_eq!(vanilla_body_row(3, 4), 3);
+    }
+
+    #[test]
+    fn alpha_over_keeps_lower_layer_body() {
+        let mut dst = vec![0u8; (VANILLA_CELL_W * VANILLA_CELL_H * 4) as usize];
+        // 下层：整帧不透明红
+        for i in 0..(VANILLA_CELL_W * VANILLA_CELL_H) as usize {
+            let o = i * 4;
+            dst[o] = 200;
+            dst[o + 1] = 40;
+            dst[o + 2] = 40;
+            dst[o + 3] = 255;
+        }
+        // 上层：仅顶部一行不透明白（模拟头），其余透明
+        let mut src_rgba = vec![0u8; (VANILLA_CELL_W * VANILLA_CELL_H * 4) as usize];
+        for x in 0..VANILLA_CELL_W {
+            let o = (x * 4) as usize;
+            src_rgba[o] = 255;
+            src_rgba[o + 1] = 255;
+            src_rgba[o + 2] = 255;
+            src_rgba[o + 3] = 255;
+        }
+        let src = crate::xnb::RgbaTexture {
+            name: "t".into(),
+            width: VANILLA_CELL_W,
+            height: VANILLA_CELL_H,
+            rgba: src_rgba,
+        };
+        blit_layer_frame(
+            &mut dst,
+            VANILLA_CELL_W,
+            0,
+            &src,
+            0,
+            Color::rgb(1.0, 1.0, 1.0),
+        );
+        // 头顶被盖成白
+        assert_eq!(dst[0], 255);
+        assert_eq!(dst[3], 255);
+        // 中部躯干仍是红
+        let mid = ((VANILLA_CELL_H / 2) * VANILLA_CELL_W * 4) as usize;
+        assert_eq!(dst[mid], 200);
+        assert_eq!(dst[mid + 3], 255);
+    }
 }
