@@ -1,14 +1,16 @@
-//! 森林树：`Tree_Tops_0` 树冠 + `Tree_Branches_0` 侧枝。
+//! 自然树：权威格是不挡移动的 `TREE` 树干；树冠与侧枝是特殊绘制。
 //!
-//! 世界里树仍是一列 `WOOD` 加周围 `LEAF`（碰撞与砍伐不变）。
-//! 画出时不再铺方块，改贴树冠与树干。
+//! 绘制落在实心物块之前（背景物）。不使用假 `LEAF` 格，也不用整图遮盖错误逻辑块。
 
 use spark_core::{Color, Rect};
 use spark_renderer::{DrawList, TextureId};
 use tr_core::BlockId;
 
-use crate::world::{TILE, World, screen_len, screen_of, x_in_bounds};
+use crate::tile_frame::CELL;
+use crate::world::{TILE, WORLD_H, World, screen_len, screen_of, x_in_bounds};
 
+/// 树图集帧步长（`Tiles_5`）：16 画面 + 6 间距。
+const TREE_STRIDE: u32 = 22;
 /// `Tree_Tops_0`：三帧，步长 82，可画 80。
 const TOP_STRIDE: u32 = 82;
 const TOP_CELL: u32 = 80;
@@ -26,9 +28,11 @@ struct Sheet {
     h: u32,
 }
 
-/// 已上传的森林树部件。缺文件时不替换方块树。
+/// 已上传的森林树部件。
 #[derive(Default)]
 pub struct TreeAtlas {
+    /// `Tiles_5`：树干格。
+    trunks: Option<Sheet>,
     tops: Option<Sheet>,
     branches: Option<Sheet>,
     ready: bool,
@@ -40,7 +44,7 @@ impl TreeAtlas {
     }
 
     pub fn ready(&self) -> bool {
-        self.tops.is_some()
+        self.trunks.is_some() || self.tops.is_some()
     }
 
     pub fn ensure(&mut self, draw: &mut DrawList, install: Option<&std::path::Path>) {
@@ -52,16 +56,19 @@ impl TreeAtlas {
             return;
         };
         let images = root.join("Content").join("Images");
+        self.trunks = upload(draw, &images.join("Tiles_5.xnb"));
         self.tops = upload(draw, &images.join("Tree_Tops_0.xnb"));
         self.branches = upload(draw, &images.join("Tree_Branches_0.xnb"));
         tracing::info!(
+            trunks = self.trunks.is_some(),
             tops = self.tops.is_some(),
             branches = self.branches.is_some(),
             "森林树贴图已上传"
         );
     }
 
-    pub fn paint<F>(
+    /// 画在实心物块之前：树干 → 侧枝 → 树冠。
+    pub fn paint_behind_solids<F>(
         &self,
         draw: &mut DrawList,
         world: &World,
@@ -75,9 +82,6 @@ impl TreeAtlas {
     ) where
         F: Fn(i32, i32) -> Color,
     {
-        let Some(tops) = &self.tops else {
-            return;
-        };
         let x_lo = x0 - 6;
         let x_hi = x1 + 6;
         for tx in x_lo..=x_hi {
@@ -87,13 +91,26 @@ impl TreeAtlas {
             if trunk.soil < y0 - 2 || trunk.top > y1 + 6 {
                 continue;
             }
-            let frame = (tx.rem_euclid(3)) as u32;
+            let style = (tx.rem_euclid(3)) as u32;
             let tint = tint_at(tx, trunk.top);
+
             for y in trunk.top..trunk.soil {
                 if y < y0 - 1 || y > y1 + 1 {
                     continue;
                 }
-                paint_bark(draw, tops, frame, tx, y, cam_x, cam_y, tint);
+                paint_trunk_cell(
+                    draw,
+                    self.trunks.as_ref(),
+                    self.tops.as_ref(),
+                    style,
+                    tx,
+                    y,
+                    trunk.top,
+                    trunk.soil,
+                    cam_x,
+                    cam_y,
+                    tint,
+                );
                 if let Some(branches) = &self.branches {
                     if y > trunk.top && y + 1 < trunk.soil && (tx + y).rem_euclid(3) == 0 {
                         let side = if tx.rem_euclid(2) == 0 { 0 } else { 1 };
@@ -102,7 +119,10 @@ impl TreeAtlas {
                     }
                 }
             }
-            paint_top(draw, tops, frame, tx, trunk.top, cam_x, cam_y, tint);
+
+            if let Some(tops) = &self.tops {
+                paint_top(draw, tops, style, tx, trunk.top, cam_x, cam_y, tint);
+            }
         }
     }
 }
@@ -129,22 +149,9 @@ fn upload(draw: &mut DrawList, path: &std::path::Path) -> Option<Sheet> {
     }
 }
 
-/// 这一格是自然树的树干或树冠占位，绘制时跳过方块。
+/// 自然树干格由本模块绘制时，跳过通用方块通道。
 pub fn hides_block(world: &World, tx: i32, ty: i32) -> bool {
-    match world.get(tx, ty) {
-        BlockId::WOOD => trunk_at(world, tx).is_some(),
-        BlockId::LEAF => {
-            for dx in -3..=3 {
-                if let Some(trunk) = trunk_at(world, tx + dx) {
-                    if (ty - trunk.top).abs() <= 4 {
-                        return true;
-                    }
-                }
-            }
-            false
-        }
-        _ => false,
-    }
+    world.get(tx, ty) == BlockId::TREE && trunk_at(world, tx).is_some()
 }
 
 struct Trunk {
@@ -156,51 +163,109 @@ fn trunk_at(world: &World, tx: i32) -> Option<Trunk> {
     if !x_in_bounds(tx) {
         return None;
     }
-    let soil = world.surface_at(tx);
-    if world.get(tx, soil - 1) != BlockId::WOOD {
+    // 从地表往上找连续 `TREE`，不依赖生成时的噪声地表函数是否仍准确。
+    let mut y = 0;
+    let mut found_soil = None;
+    while y < WORLD_H {
+        let id = world.get(tx, y);
+        if matches!(
+            id,
+            BlockId::GRASS | BlockId::DIRT | BlockId::SNOW | BlockId::SAND | BlockId::STONE
+        ) {
+            // 可能的土壤：上方若是树干则确认。
+            if y > 0 && world.get(tx, y - 1) == BlockId::TREE {
+                found_soil = Some(y);
+                break;
+            }
+        }
+        y += 1;
+    }
+    let soil = found_soil.or_else(|| {
+        let s = world.surface_at(tx);
+        if world.get(tx, s - 1) == BlockId::TREE {
+            Some(s)
+        } else {
+            None
+        }
+    })?;
+    if world.get(tx, soil - 1) != BlockId::TREE {
         return None;
     }
     let mut top = soil - 1;
-    while top > 1 && world.get(tx, top - 1) == BlockId::WOOD {
+    while top > 1 && world.get(tx, top - 1) == BlockId::TREE {
         top -= 1;
-    }
-    let mut leafy = false;
-    for dy in -2..=1 {
-        for dx in -2..=2 {
-            if world.get(tx + dx, top + dy) == BlockId::LEAF {
-                leafy = true;
-            }
-        }
-    }
-    if !leafy {
-        return None;
     }
     Some(Trunk { top, soil })
 }
 
-fn paint_bark(
+fn paint_trunk_cell(
     draw: &mut DrawList,
-    sheet: &Sheet,
-    frame: u32,
+    trunks: Option<&Sheet>,
+    tops_fallback: Option<&Sheet>,
+    style: u32,
     tx: i32,
     ty: i32,
+    top: i32,
+    soil: i32,
     cam_x: f32,
     cam_y: f32,
     tint: Color,
 ) {
-    // 树冠底边正中的树皮，竖着重复成树干。
-    let x = frame * TOP_STRIDE + 32;
-    let y = 64u32;
-    let uv = Rect::new(
-        x as f32 / sheet.w.max(1) as f32,
-        y as f32 / sheet.h.max(1) as f32,
-        16.0 / sheet.w.max(1) as f32,
-        16.0 / sheet.h.max(1) as f32,
-    );
+    let sx = screen_of(tx as f32 * TILE, cam_x);
     let sy = screen_of(ty as f32 * TILE, cam_y);
-    let w = screen_len(TILE * 0.55);
-    let x0 = screen_of(tx as f32 * TILE, cam_x) + (screen_len(TILE) - w) * 0.5;
-    draw.tex_rect(sheet.tex, Rect::new(x0, sy, w, screen_len(TILE)), uv, tint);
+    let tile_px = screen_len(TILE);
+
+    if let Some(sheet) = trunks {
+        let (fu, fv) = trunk_frame(ty, top, soil, style);
+        let uv = cell_uv(sheet, fu, fv);
+        draw.tex_rect(sheet.tex, Rect::new(sx, sy, tile_px, tile_px), uv, tint);
+        return;
+    }
+
+    // 无 `Tiles_5` 时：从树冠图裁树皮，宽度收窄，仍画在背景层。
+    if let Some(sheet) = tops_fallback {
+        let x = style * TOP_STRIDE + 32;
+        let y = 64u32;
+        let uv = Rect::new(
+            x as f32 / sheet.w.max(1) as f32,
+            y as f32 / sheet.h.max(1) as f32,
+            16.0 / sheet.w.max(1) as f32,
+            16.0 / sheet.h.max(1) as f32,
+        );
+        let w = screen_len(TILE * 0.55);
+        let x0 = sx + (tile_px - w) * 0.5;
+        draw.tex_rect(sheet.tex, Rect::new(x0, sy, w, tile_px), uv, tint);
+        return;
+    }
+
+    let w = tile_px * 0.45;
+    draw.fill_rect(
+        Rect::new(sx + (tile_px - w) * 0.5, sy, w, tile_px),
+        Color::rgba(tint.r * 0.55, tint.g * 0.35, tint.b * 0.18, tint.a),
+    );
+}
+
+fn trunk_frame(ty: i32, top: i32, soil: i32, style: u32) -> (u32, u32) {
+    let variant = style % 3;
+    if ty + 1 == soil {
+        // 根部 / 树桩一带。
+        (variant * TREE_STRIDE, TREE_STRIDE * 2)
+    } else if ty == top {
+        // 树冠下第一节。
+        (variant * TREE_STRIDE, 0)
+    } else {
+        // 中段树干。
+        (0, variant * TREE_STRIDE)
+    }
+}
+
+fn cell_uv(sheet: &Sheet, px: u32, py: u32) -> Rect {
+    Rect::new(
+        px as f32 / sheet.w.max(1) as f32,
+        py as f32 / sheet.h.max(1) as f32,
+        CELL as f32 / sheet.w.max(1) as f32,
+        CELL as f32 / sheet.h.max(1) as f32,
+    )
 }
 
 fn paint_top(

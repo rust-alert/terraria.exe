@@ -208,7 +208,7 @@ impl World {
         w
     }
 
-    /// 地表种树：树干 `WOOD`，树冠 `LEAF`（不挡碰撞）。
+    /// 地表种树：只写不挡移动的 `TREE` 树干。树冠由绘制层用 `Tree_Tops` 画，不占假叶格。
     fn plant_trees(&mut self) {
         let mut x = 8;
         while x < WORLD_W - 4 {
@@ -263,7 +263,10 @@ impl World {
                     if y < water_y {
                         // 湖面上空清障
                         if !id.solid()
-                            || matches!(id, BlockId::LEAF | BlockId::SAPLING | BlockId::WOOD)
+                            || matches!(
+                                id,
+                                BlockId::LEAF | BlockId::SAPLING | BlockId::WOOD | BlockId::TREE
+                            )
                         {
                             self.set(x, y, BlockId::AIR);
                         }
@@ -633,25 +636,11 @@ impl World {
                 continue;
             }
             let cur = self.get(tx, y);
-            if matches!(cur, BlockId::AIR | BlockId::LEAF | BlockId::SAPLING) {
-                self.set(tx, y, BlockId::WOOD);
-            }
-        }
-        let top = surface_y - trunk;
-        for dy in -2i32..=1 {
-            for dx in -2i32..=2 {
-                if dx.abs() + dy.abs() > 3 {
-                    continue;
-                }
-                let lx = wrap_tx(tx + dx);
-                let ly = top + dy;
-                if !self.y_in_bounds(ly) {
-                    continue;
-                }
-                let cur = self.get(lx, ly);
-                if matches!(cur, BlockId::AIR | BlockId::SAPLING) {
-                    self.set(lx, ly, BlockId::LEAF);
-                }
+            if matches!(
+                cur,
+                BlockId::AIR | BlockId::LEAF | BlockId::SAPLING | BlockId::TREE
+            ) {
+                self.set(tx, y, BlockId::TREE);
             }
         }
     }
@@ -1214,6 +1203,7 @@ impl World {
         self.damage_hp.clear();
         self.grow_t.clear();
         self.drops.clear();
+        self.promote_living_trees();
         for y in 0..WORLD_H {
             for x in 0..WORLD_W {
                 if self.get(x, y) == BlockId::SAPLING {
@@ -1223,6 +1213,66 @@ impl World {
             }
         }
         true
+    }
+
+    /// 旧存档：地表上的实心 `WOOD` 树干升为可穿越 `TREE`，并清掉假 `LEAF` 树冠格。
+    fn promote_living_trees(&mut self) {
+        for x in 0..WORLD_W {
+            let mut y = 1;
+            while y < WORLD_H - 1 {
+                if self.get(x, y) != BlockId::WOOD {
+                    y += 1;
+                    continue;
+                }
+                let top = y;
+                while y < WORLD_H && self.get(x, y) == BlockId::WOOD {
+                    y += 1;
+                }
+                let height = y - top;
+                if height < 3 {
+                    continue;
+                }
+                let soil = self.get(x, y);
+                if !matches!(
+                    soil,
+                    BlockId::GRASS | BlockId::DIRT | BlockId::SNOW | BlockId::SAND
+                ) {
+                    continue;
+                }
+                for ty in top..y {
+                    self.set(x, ty, BlockId::TREE);
+                }
+                // 清掉旧假叶冠占位。
+                for dy in -3i32..=2 {
+                    for dx in -3i32..=3 {
+                        let lx = wrap_tx(x + dx);
+                        let ly = top + dy;
+                        if self.y_in_bounds(ly) && self.get(lx, ly) == BlockId::LEAF {
+                            self.set(lx, ly, BlockId::AIR);
+                        }
+                    }
+                }
+            }
+        }
+        // 已是 TREE 的柱旁残留假叶也清掉。
+        for x in 0..WORLD_W {
+            for y in 0..WORLD_H {
+                if self.get(x, y) != BlockId::LEAF {
+                    continue;
+                }
+                let mut near_tree = false;
+                for dx in -2..=2 {
+                    for dy in -2..=2 {
+                        if self.get(wrap_tx(x + dx), y + dy) == BlockId::TREE {
+                            near_tree = true;
+                        }
+                    }
+                }
+                if near_tree {
+                    self.set(x, y, BlockId::AIR);
+                }
+            }
+        }
     }
 
     pub fn decode_walls(&mut self, raw: &str) -> bool {
@@ -1276,5 +1326,60 @@ mod tests {
         assert_eq!(view_extent(1280.0), 640.0);
         let back = world_of_screen(screen_of(48.0, 10.0), 10.0);
         assert!((back - 48.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn living_tree_has_no_fake_leaf_crown() {
+        let world = World::generate(7);
+        let mut trees = 0;
+        let mut leaves = 0;
+        for x in 0..WORLD_W {
+            for y in 0..WORLD_H {
+                match world.get(x, y) {
+                    BlockId::TREE => trees += 1,
+                    BlockId::LEAF => leaves += 1,
+                    _ => {}
+                }
+            }
+        }
+        assert!(trees > 0, "生成世界应有树干");
+        assert_eq!(leaves, 0, "树冠不得占用假 LEAF 格");
+        assert!(!BlockId::TREE.blocks_motion());
+        assert!(!BlockId::TREE.solid());
+        assert_eq!(BlockId::TREE.drop_item(), Some(ItemId::WOOD));
+        assert!(BlockId::WOOD.blocks_motion());
+    }
+
+    #[test]
+    fn old_wood_trunk_promotes_to_passable_tree() {
+        let mut world = World::generate(11);
+        let mut sample = None;
+        'scan: for x in 0..WORLD_W {
+            for y in 1..WORLD_H - 1 {
+                if world.get(x, y) == BlockId::TREE {
+                    sample = Some((x, y));
+                    break 'scan;
+                }
+            }
+        }
+        let (x, y) = sample.expect("应有树");
+        let mut top = y;
+        while top > 1 && world.get(x, top - 1) == BlockId::TREE {
+            top -= 1;
+        }
+        let mut bot = y;
+        while bot + 1 < WORLD_H && world.get(x, bot + 1) == BlockId::TREE {
+            bot += 1;
+        }
+        for ty in top..=bot {
+            world.set(x, ty, BlockId::WOOD);
+        }
+        world.promote_living_trees();
+        assert_eq!(world.get(x, y), BlockId::TREE);
+        assert!(!world.get(x, y).blocks_motion());
+
+        world.set(4, WORLD_H - 3, BlockId::WOOD);
+        world.promote_living_trees();
+        assert_eq!(world.get(4, WORLD_H - 3), BlockId::WOOD);
     }
 }

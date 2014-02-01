@@ -70,6 +70,8 @@ impl BlockId {
     pub const WATER: Self = Self(21);
     /// 绳索（可穿行，可攀爬，便于竖井）。
     pub const ROPE: Self = Self(22);
+    /// 自然树干。可砍、可当放置支点，不挡人、敌、弹和钩爪。
+    pub const TREE: Self = Self(23);
 }
 
 impl BlockId {
@@ -88,6 +90,7 @@ impl BlockId {
                 | Self::LADDER
                 | Self::ROPE
                 | Self::WATER
+                | Self::TREE
         )
     }
 
@@ -106,6 +109,7 @@ impl BlockId {
                 | Self::LADDER
                 | Self::ROPE
                 | Self::WATER
+                | Self::TREE
         )
     }
 
@@ -185,7 +189,7 @@ impl BlockId {
             Self::LEAF => 20,
             Self::PLATFORM | Self::BED => 40,
             Self::DIRT | Self::GRASS | Self::SAND | Self::SNOW => 50,
-            Self::WOOD | Self::CHEST => 60,
+            Self::WOOD | Self::TREE | Self::CHEST => 60,
             Self::COPPER_ORE => 80,
             Self::STONE | Self::WORKBENCH | Self::FURNACE => 100,
             Self::IRON_ORE => 150,
@@ -215,6 +219,7 @@ impl BlockId {
             Self::BED => "床",
             Self::WATER => "水",
             Self::ROPE => "绳索",
+            Self::TREE => "树",
             _ => "未知",
         }
     }
@@ -233,7 +238,7 @@ impl BlockId {
         match self {
             Self::DIRT | Self::GRASS => Some(ItemId::DIRT),
             Self::STONE => Some(ItemId::STONE),
-            Self::WOOD => Some(ItemId::WOOD),
+            Self::WOOD | Self::TREE => Some(ItemId::WOOD),
             Self::WORKBENCH => Some(ItemId::WORKBENCH),
             Self::SAPLING => Some(ItemId::SAPLING),
             Self::TORCH => Some(ItemId::TORCH),
@@ -357,7 +362,7 @@ impl ItemId {
     pub const WOOD_WALL: Self = Self(38);
     /// 石墙：只铺背景墙。
     pub const STONE_WALL: Self = Self(39);
-    /// 铜币（正版 `Item_71`）。
+    /// 铜币（ `Item_71`）。
     pub const COPPER_COIN: Self = Self(40);
 
     pub const ALL: [Self; 35] = [

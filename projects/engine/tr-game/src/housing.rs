@@ -1,4 +1,4 @@
-//! 房屋空间扫描：对齐原版「封闭房间 + 墙 + 光源 + 家具」的最小可玩判定。
+//! 房屋空间扫描：封闭房间 + 墙 + 光源 + 家具 的最小可玩判定。
 //!
 //! 夹具没有椅/桌，用床或工作台充当「舒适家具」。门用平台开口近似。
 
@@ -16,6 +16,7 @@ fn is_room_fill(id: BlockId) -> bool {
             | BlockId::LADDER
             | BlockId::ROPE
             | BlockId::LEAF
+            | BlockId::TREE
             | BlockId::SAPLING
             | BlockId::CHEST
             | BlockId::WORKBENCH

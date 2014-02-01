@@ -397,7 +397,7 @@ pub fn item_def(id: ItemId) -> ItemDef {
     content().item_or_unknown(id)
 }
 
-/// 过渡期硬编码方块表。不是正版编号，也不是 mod 加载器。
+/// 过渡期硬编码方块表。不是文件名编号，也不是 mod 加载器。
 pub fn install_builtin_fixture() {
     if is_installed() {
         return;
@@ -422,6 +422,7 @@ pub fn install_builtin_fixture() {
         (19, "terraria:furnace", "熔炉", true, true, 100, 5),
         (20, "terraria:bed", "床", true, true, 40, 0),
         (21, "terraria:water", "水", false, false, 0, 0),
+        (23, "terraria:tree", "树", false, false, 60, 0),
     ];
     for &(id, key, name, solid, motion, hp, light) in blocks {
         let tex = format!(

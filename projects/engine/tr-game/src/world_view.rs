@@ -65,7 +65,6 @@ fn stamp_can_flip_y(id: BlockId) -> bool {
         id,
         BlockId::DIRT
             | BlockId::STONE
-            | BlockId::LEAF
             | BlockId::SAND
             | BlockId::SNOW
             | BlockId::COPPER_ORE
@@ -716,6 +715,7 @@ impl TerrariaApp {
                     id,
                     BlockId::AIR
                         | BlockId::LEAF
+                        | BlockId::TREE
                         | BlockId::SAPLING
                         | BlockId::TORCH
                         | BlockId::LADDER
@@ -763,6 +763,32 @@ impl TerrariaApp {
             }
         }
 
+        // 自然树在实心物块之前（背景层）：人走在树前，放置的方块盖在树冠前。
+        self.tree_atlas.paint_behind_solids(
+            draw,
+            world,
+            self.cam_x,
+            self.cam_y,
+            x0,
+            y0,
+            x1,
+            y1,
+            |tx, ty| shade(Color::rgb(1.0, 1.0, 1.0), lmap.sample(tx, ty)),
+        );
+
+        // 液体：墙/树之后、实心物块之前。
+        for ty in y0..=y1 {
+            for tx in x0..=x1 {
+                if world.get(tx, ty) != BlockId::WATER {
+                    continue;
+                }
+                let light = lmap.sample(tx, ty);
+                let sx = screen_of(tx as f32 * TILE, self.cam_x);
+                let sy = screen_of(ty as f32 * TILE, self.cam_y);
+                self.draw_water_tile(draw, world, tx, ty, sx, sy, light);
+            }
+        }
+
         for ty in y0..=y1 {
             for tx in x0..=x1 {
                 let id = world.get(tx, ty);
@@ -782,24 +808,19 @@ impl TerrariaApp {
                     }
                     continue;
                 }
+                // 自然树已由背景层绘制；液体已画；遗留假叶不画。
+                if id == BlockId::TREE
+                    || id == BlockId::LEAF
+                    || id == BlockId::WATER
+                    || (self.tree_atlas.ready() && crate::trees::hides_block(world, tx, ty))
+                {
+                    continue;
+                }
                 let light = lmap.sample(tx, ty);
                 let sx = screen_of(tx as f32 * TILE, self.cam_x);
                 let sy = screen_of(ty as f32 * TILE, self.cam_y);
-                if id == BlockId::WATER {
-                    self.draw_water_tile(draw, world, tx, ty, sx, sy, light);
-                    continue;
-                }
-                if self.tree_atlas.ready() && crate::trees::hides_block(world, tx, ty) {
-                    continue;
-                }
 
                 let drawn_atlas = if let Some(view) = self.tile_atlas.block_framed(world, tx, ty) {
-                    let (ox, oy) = if id == BlockId::LEAF {
-                        let h = tile_hash(tx, ty);
-                        (((h & 3) as f32) - 1.5, (((h >> 3) & 3) as f32) - 1.0)
-                    } else {
-                        (0.0, 0.0)
-                    };
                     // 地形 framing 已含变体；家具等仍可轻微镜像打破印章。
                     let uv = if matches!(
                         id,
@@ -817,7 +838,7 @@ impl TerrariaApp {
                     };
                     draw.tex_rect(
                         view.tex,
-                        Rect::new(sx + ox, sy + oy, TILE, TILE),
+                        Rect::new(sx, sy, TILE, TILE),
                         uv,
                         shade(Color::rgb(1.0, 1.0, 1.0), light),
                     );
@@ -832,7 +853,7 @@ impl TerrariaApp {
                         BlockId::DIRT => DIRT.base,
                         BlockId::GRASS => GRASS.base,
                         BlockId::STONE => STONE.base,
-                        BlockId::WOOD => Color::rgb(0.55, 0.35, 0.18),
+                        BlockId::WOOD | BlockId::TREE => Color::rgb(0.55, 0.35, 0.18),
                         BlockId::LEAF => Color::rgba(0.22, 0.55, 0.22, 0.85),
                         BlockId::WORKBENCH => Color::rgb(0.62, 0.42, 0.22),
                         BlockId::SAPLING => Color::rgb(0.35, 0.72, 0.28),
@@ -948,18 +969,6 @@ impl TerrariaApp {
                 }
             }
         }
-
-        self.tree_atlas.paint(
-            draw,
-            world,
-            self.cam_x,
-            self.cam_y,
-            x0,
-            y0,
-            x1,
-            y1,
-            |tx, ty| shade(Color::rgb(1.0, 1.0, 1.0), lmap.sample(tx, ty)),
-        );
 
         paint_light_halos(
             draw,

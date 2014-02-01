@@ -19,10 +19,11 @@ pub(crate) fn tile_file(id: BlockId) -> Option<u32> {
         BlockId::SAPLING => 20,
         BlockId::CHEST => 21,
         BlockId::WOOD => 30,
+        BlockId::TREE => 5,
         BlockId::SAND => 53,
         BlockId::BED => 79,
         BlockId::SNOW => 147,
-        BlockId::LEAF => 192,
+        BlockId::LEAF => 192, // 遗留：不再生成，保留映射以免旧资产路径报缺
         BlockId::LADDER | BlockId::ROPE => 213,
         _ => return None,
     })
@@ -69,7 +70,7 @@ pub(crate) fn wall_file(id: WallId) -> Option<u32> {
 
 /// 史莱姆外形。这张是灰度，绘制时再乘身体色。
 pub(crate) const SLIME_NPC_FILE: u32 = 1;
-/// 正版恶魔眼 `NPC_2`。
+/// 恶魔眼 `NPC_2`。
 pub(crate) const DEMON_EYE_NPC_FILE: u32 = 2;
-/// 正版僵尸 `NPC_3`。
+/// 僵尸 `NPC_3`。
 pub(crate) const ZOMBIE_NPC_FILE: u32 = 3;

@@ -25,6 +25,7 @@ fn is_open(id: BlockId) -> bool {
         BlockId::AIR
             | BlockId::WATER
             | BlockId::LEAF
+            | BlockId::TREE
             | BlockId::SAPLING
             | BlockId::TORCH
             | BlockId::LADDER
@@ -48,10 +49,7 @@ fn is_terrain(id: BlockId) -> bool {
 }
 
 fn is_stoneish(id: BlockId) -> bool {
-    matches!(
-        id,
-        BlockId::STONE | BlockId::COPPER_ORE | BlockId::IRON_ORE
-    )
+    matches!(id, BlockId::STONE | BlockId::COPPER_ORE | BlockId::IRON_ORE)
 }
 
 fn hash2(x: i32, y: i32) -> u32 {

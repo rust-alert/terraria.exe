@@ -1,4 +1,4 @@
-//! 夹具方块纹理。正版图集不按夹具 ID 取号。
+//! 夹具方块纹理。Content 图集不按夹具 ID 取号。
 //! 地形块按邻接 framing 从 `Tiles_N` 采样 16 像素格（步长 18）。
 
 use std::collections::HashMap;
@@ -36,12 +36,12 @@ struct SheetMeta {
 /// 按方块 / 墙 / 特效用途索引的原尺寸纹理集。
 pub struct TileAtlas {
     blocks: HashMap<u32, TextureId>,
-    /// 正版图集元数据（可 framing）。
+    /// Content 图集元数据（可 framing）。
     sheets: HashMap<u32, SheetMeta>,
     /// 不为整张 `[0,1]²` 的采样，例如家具第一格。
     block_uv: HashMap<u32, Rect>,
     walls: HashMap<u8, TextureId>,
-    /// 正版墙图集（可 framing）。
+    /// Content 墙图集（可 framing）。
     wall_sheets: HashMap<u8, SheetMeta>,
     halo: Option<TextureId>,
     white: Option<TextureId>,
@@ -81,6 +81,7 @@ impl TileAtlas {
             BlockId::GRASS,
             BlockId::STONE,
             BlockId::WOOD,
+            BlockId::TREE,
             BlockId::LEAF,
             BlockId::WORKBENCH,
             BlockId::SAPLING,
@@ -162,6 +163,7 @@ impl TileAtlas {
             BlockId::GRASS,
             BlockId::STONE,
             BlockId::WOOD,
+            BlockId::TREE,
             BlockId::LEAF,
             BlockId::WORKBENCH,
             BlockId::SAPLING,
@@ -184,7 +186,7 @@ impl TileAtlas {
                 continue;
             };
             let Ok(tex) = crate::xnb::decode_texture_file(path) else {
-                tracing::warn!(file = file_id, "正版方块图集解码失败");
+                tracing::warn!(file = file_id, "Content 方块图集解码失败");
                 continue;
             };
             let Ok(image) = PixelImage::from_rgba8(tex.width, tex.height, tex.rgba) else {
@@ -226,10 +228,7 @@ impl TileAtlas {
             }
             n += 1;
         }
-        if let Some(path) = assets
-            .npc_sheets
-            .get(&crate::sheets::SLIME_NPC_FILE)
-        {
+        if let Some(path) = assets.npc_sheets.get(&crate::sheets::SLIME_NPC_FILE) {
             if let Some((gpu, uv)) = upload_slime_frame(draw, path) {
                 self.slime = Some(gpu);
                 self.slime_uv = uv;
@@ -252,7 +251,7 @@ impl TileAtlas {
                 continue;
             };
             let Ok(tex) = crate::xnb::decode_texture_file(path) else {
-                tracing::warn!(file = file_id, "正版墙图集解码失败");
+                tracing::warn!(file = file_id, "Content 墙图集解码失败");
                 continue;
             };
             let Ok(image) = PixelImage::from_rgba8(tex.width, tex.height, tex.rgba) else {
@@ -295,17 +294,14 @@ impl TileAtlas {
         Some(TileView { tex, uv })
     }
 
-    /// 按邻接 framing 采样正版图集。
+    /// 按邻接 framing 采样 Content 图集。
     pub fn block_framed(&self, world: &World, tx: i32, ty: i32) -> Option<TileView> {
         let id = world.get(tx, ty);
         if let Some(meta) = self.sheets.get(&id.0) {
             let uv = tile_frame::frame_uv_px(world, tx, ty)
                 .and_then(|(u, v)| tile_frame::frame_to_uv(u, v, meta.w, meta.h))
                 .unwrap_or(meta.fallback_uv);
-            return Some(TileView {
-                tex: meta.tex,
-                uv,
-            });
+            return Some(TileView { tex: meta.tex, uv });
         }
         self.block(id)
     }
@@ -321,7 +317,7 @@ impl TileAtlas {
         Some(TileView { tex, uv: FULL_UV })
     }
 
-    /// 按邻接 framing 采样正版墙图集。
+    /// 按邻接 framing 采样 Content 墙图集。
     pub fn wall_framed(&self, world: &World, tx: i32, ty: i32) -> Option<TileView> {
         let id = world.get_wall(tx, ty);
         if id == WallId::NONE {
@@ -331,10 +327,7 @@ impl TileAtlas {
             let uv = tile_frame::wall_frame_uv_px(world, tx, ty)
                 .and_then(|(u, v)| tile_frame::frame_to_uv(u, v, meta.w, meta.h))
                 .unwrap_or(meta.fallback_uv);
-            return Some(TileView {
-                tex: meta.tex,
-                uv,
-            });
+            return Some(TileView { tex: meta.tex, uv });
         }
         self.wall(id)
     }
@@ -422,7 +415,8 @@ fn best_cell_uv(image: &PixelImage, grass: bool) -> Option<Rect> {
         }
     }
     let (x0, y0) = best?;
-    let sprite = spark_image::Sprite::new(Rect::new(x0 as f32, y0 as f32, cell as f32, cell as f32));
+    let sprite =
+        spark_image::Sprite::new(Rect::new(x0 as f32, y0 as f32, cell as f32, cell as f32));
     sprite.uv(image).ok()
 }
 
@@ -839,7 +833,7 @@ fn pixel_for(id: BlockId, x: u32, y: u32) -> Color {
         BlockId::SNOW => lit_face(SNOW, x, y),
         BlockId::COPPER_ORE => pixel_ore(x, y, COPPER, 4),
         BlockId::IRON_ORE => pixel_ore(x, y, IRON, 7),
-        BlockId::WOOD => pixel_wood(x, y),
+        BlockId::WOOD | BlockId::TREE => pixel_wood(x, y),
         BlockId::LEAF => pixel_leaf(x, y),
         BlockId::WORKBENCH => {
             if y < 3 {

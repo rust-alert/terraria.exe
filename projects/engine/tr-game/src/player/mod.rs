@@ -500,7 +500,7 @@ impl Player {
             world.spawn_drop_at_tile(tx, ty, item, 1);
         }
         // 砍木有概率掉树苗
-        if broken == BlockId::WOOD {
+        if matches!(broken, BlockId::WOOD | BlockId::TREE) {
             let roll = ((tx.wrapping_mul(31) ^ ty.wrapping_mul(17)) as u32) % 100;
             if roll < 35 {
                 world.spawn_drop_at_tile(tx, ty, ItemId::SAPLING, 1);
