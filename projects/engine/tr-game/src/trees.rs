@@ -91,37 +91,39 @@ impl TreeAtlas {
             if trunk.soil < y0 - 2 || trunk.top > y1 + 6 {
                 continue;
             }
-            let style = (tx.rem_euclid(3)) as u32;
             let tint = tint_at(tx, trunk.top);
+            let top_style = world
+                .frame(tx, trunk.top)
+                .map(|(fx, _)| (fx.max(0) as u32) / TREE_STRIDE)
+                .unwrap_or(0);
 
             for y in trunk.top..trunk.soil {
                 if y < y0 - 1 || y > y1 + 1 {
                     continue;
                 }
+                let Some((fx, fy)) = world.frame(tx, y) else {
+                    continue;
+                };
+                let (fu, fv, branch) = unpack_frame(fx, fy);
                 paint_trunk_cell(
                     draw,
                     self.trunks.as_ref(),
                     self.tops.as_ref(),
-                    style,
+                    fu,
+                    fv,
                     tx,
                     y,
-                    trunk.top,
-                    trunk.soil,
                     cam_x,
                     cam_y,
                     tint,
                 );
-                if let Some(branches) = &self.branches {
-                    if y > trunk.top && y + 1 < trunk.soil && (tx + y).rem_euclid(3) == 0 {
-                        let side = if tx.rem_euclid(2) == 0 { 0 } else { 1 };
-                        let row = (y.rem_euclid(3)) as u32;
-                        paint_branch(draw, branches, side, row, tx, y, cam_x, cam_y, tint);
-                    }
+                if let (Some(branches), Some((side, row))) = (&self.branches, branch) {
+                    paint_branch(draw, branches, side, row, tx, y, cam_x, cam_y, tint);
                 }
             }
 
             if let Some(tops) = &self.tops {
-                paint_top(draw, tops, style, tx, trunk.top, cam_x, cam_y, tint);
+                paint_top(draw, tops, top_style, tx, trunk.top, cam_x, cam_y, tint);
             }
         }
     }
@@ -198,15 +200,61 @@ fn trunk_at(world: &World, tx: i32) -> Option<Trunk> {
     Some(Trunk { top, soil })
 }
 
+/// 给世界上每一列自然树写入帧。绘制只读这些值。
+pub fn stamp_frames(world: &mut World) {
+    for x in 0..crate::world::WORLD_W {
+        stamp_column(world, x);
+    }
+}
+
+/// 给一列树写入 `frame_x` / `frame_y`。没有树则跳过。
+pub fn stamp_column(world: &mut World, tx: i32) {
+    let Some(trunk) = trunk_at(world, tx) else {
+        return;
+    };
+    let style = (tx.rem_euclid(3) as i16) * TREE_STRIDE as i16;
+    for y in trunk.top..trunk.soil {
+        let row = if y + 1 == trunk.soil {
+            2
+        } else if y == trunk.top {
+            0
+        } else {
+            1
+        };
+        let mut fy = row * TREE_STRIDE as i16;
+        if y > trunk.top && y + 1 < trunk.soil && (tx + y).rem_euclid(3) == 0 {
+            let side: i16 = if tx.rem_euclid(2) == 0 { 0 } else { 1 };
+            let brow = (y.rem_euclid(3)) as i16;
+            fy |= BRANCH_BIT;
+            fy |= side << 9;
+            fy |= brow << 10;
+        }
+        world.set_frame(tx, y, style, fy);
+    }
+}
+
+/// `frame_y` 第 8 位表示这格带侧枝。
+const BRANCH_BIT: i16 = 256;
+
+fn unpack_frame(fx: i16, fy: i16) -> (u32, u32, Option<(u32, u32)>) {
+    let fu = fx.max(0) as u32;
+    let fv = (fy & 255) as u32;
+    if fy & BRANCH_BIT == 0 {
+        return (fu, fv, None);
+    }
+    let side = ((fy >> 9) & 1) as u32;
+    let row = ((fy >> 10) & 3) as u32;
+    (fu, fv, Some((side, row)))
+}
+
 fn paint_trunk_cell(
     draw: &mut DrawList,
     trunks: Option<&Sheet>,
     tops_fallback: Option<&Sheet>,
-    style: u32,
+    fu: u32,
+    fv: u32,
     tx: i32,
     ty: i32,
-    top: i32,
-    soil: i32,
     cam_x: f32,
     cam_y: f32,
     tint: Color,
@@ -216,7 +264,6 @@ fn paint_trunk_cell(
     let tile_px = screen_len(TILE);
 
     if let Some(sheet) = trunks {
-        let (fu, fv) = trunk_frame(ty, top, soil, style);
         let uv = cell_uv(sheet, fu, fv);
         draw.tex_rect(sheet.tex, Rect::new(sx, sy, tile_px, tile_px), uv, tint);
         return;
@@ -224,6 +271,7 @@ fn paint_trunk_cell(
 
     // 无 `Tiles_5` 时：从树冠图裁树皮，宽度收窄，仍画在背景层。
     if let Some(sheet) = tops_fallback {
+        let style = fu / TREE_STRIDE;
         let x = style * TOP_STRIDE + 32;
         let y = 64u32;
         let uv = Rect::new(
@@ -243,20 +291,6 @@ fn paint_trunk_cell(
         Rect::new(sx + (tile_px - w) * 0.5, sy, w, tile_px),
         Color::rgba(tint.r * 0.55, tint.g * 0.35, tint.b * 0.18, tint.a),
     );
-}
-
-fn trunk_frame(ty: i32, top: i32, soil: i32, style: u32) -> (u32, u32) {
-    let variant = style % 3;
-    if ty + 1 == soil {
-        // 根部 / 树桩一带。
-        (variant * TREE_STRIDE, TREE_STRIDE * 2)
-    } else if ty == top {
-        // 树冠下第一节。
-        (variant * TREE_STRIDE, 0)
-    } else {
-        // 中段树干。
-        (0, variant * TREE_STRIDE)
-    }
 }
 
 fn cell_uv(sheet: &Sheet, px: u32, py: u32) -> Rect {

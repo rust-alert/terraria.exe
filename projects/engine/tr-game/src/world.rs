@@ -102,6 +102,8 @@ pub struct World {
     /// 木箱内容（稀疏）。
     pub chests: HashMap<(i32, i32), HashMap<ItemId, u32>>,
     pub drops: Vec<GroundDrop>,
+    /// 稀疏帧。自然树在生成 / 读档时写入，绘制只读，不在绘制阶段重算。
+    frames: HashMap<(i32, i32), (i16, i16)>,
 }
 
 impl World {
@@ -119,6 +121,7 @@ impl World {
             grow_t: HashMap::new(),
             chests: HashMap::new(),
             drops: Vec::new(),
+            frames: HashMap::new(),
         };
         for x in 0..WORLD_W {
             let h = surface_height(seed, x);
@@ -205,6 +208,7 @@ impl World {
         }
         let _ = spawn_x;
 
+        crate::trees::stamp_frames(&mut w);
         w
     }
 
@@ -643,6 +647,7 @@ impl World {
                 self.set(tx, y, BlockId::TREE);
             }
         }
+        crate::trees::stamp_column(self, tx);
     }
 
     /// 树苗是否可种在 `(tx,ty)`：格为空/可覆盖，下方为草皮，上方净空。
@@ -736,6 +741,22 @@ impl World {
         }
     }
 
+    /// 已写入的图集帧。没有记录表示绘制不得临场猜测。
+    pub fn frame(&self, x: i32, y: i32) -> Option<(i16, i16)> {
+        if !self.in_bounds(x, y) {
+            return None;
+        }
+        self.frames.get(&(x, y)).copied()
+    }
+
+    /// 写入一格的图集帧。`set` 会清掉旧帧。
+    pub fn set_frame(&mut self, x: i32, y: i32, frame_x: i16, frame_y: i16) {
+        if !self.in_bounds(x, y) {
+            return;
+        }
+        self.frames.insert((x, y), (frame_x, frame_y));
+    }
+
     pub fn y_in_bounds(&self, y: i32) -> bool {
         y >= 0 && y < WORLD_H
     }
@@ -821,6 +842,7 @@ impl World {
         let prev = self.blocks[(y * WORLD_W + x) as usize];
         self.blocks[(y * WORLD_W + x) as usize] = id;
         self.damage_hp.remove(&(x, y));
+        self.frames.remove(&(x, y));
         if id == BlockId::WATER {
             // 外部裸 set 默认为源；精细水位走 set_water
             if prev != BlockId::WATER {
@@ -1204,6 +1226,8 @@ impl World {
         self.grow_t.clear();
         self.drops.clear();
         self.promote_living_trees();
+        self.frames.clear();
+        crate::trees::stamp_frames(self);
         for y in 0..WORLD_H {
             for x in 0..WORLD_W {
                 if self.get(x, y) == BlockId::SAPLING {
@@ -1381,5 +1405,26 @@ mod tests {
         world.set(4, WORLD_H - 3, BlockId::WOOD);
         world.promote_living_trees();
         assert_eq!(world.get(4, WORLD_H - 3), BlockId::WOOD);
+    }
+
+    #[test]
+    fn tree_frames_are_stored_with_the_trunk() {
+        let mut world = World::generate(7);
+        let mut sample = None;
+        for x in 0..WORLD_W {
+            for y in 0..WORLD_H {
+                if world.get(x, y) != BlockId::TREE {
+                    continue;
+                }
+                let (fx, fy) = world.frame(x, y).expect("树干必须带已写入的帧");
+                let row = fy & 255;
+                assert!(fx >= 0);
+                assert!(row == 0 || row == 22 || row == 44, "行 {row}");
+                sample = Some((x, y));
+            }
+        }
+        let (x, y) = sample.expect("应有树");
+        world.set(x, y, BlockId::AIR);
+        assert!(world.frame(x, y).is_none());
     }
 }
