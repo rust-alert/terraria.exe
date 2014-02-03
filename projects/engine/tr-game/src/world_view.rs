@@ -704,26 +704,13 @@ impl TerrariaApp {
         let lights = collect_lights(world, x0, y0, x1, y1);
         let lmap = LightMap::build(world, x0, y0, x1, y1, sky_amb, dayness);
 
+        // 背景墙整层先画。后面的实心块盖住同一格；平台、火把、家具不再挡住墙。
         for ty in y0..=y1 {
             for tx in x0..=x1 {
                 let wall = world.get_wall(tx, ty);
                 let Some((r, g, b)) = wall.color() else {
                     continue;
                 };
-                let id = world.get(tx, ty);
-                if !matches!(
-                    id,
-                    BlockId::AIR
-                        | BlockId::LEAF
-                        | BlockId::TREE
-                        | BlockId::SAPLING
-                        | BlockId::TORCH
-                        | BlockId::LADDER
-                        | BlockId::ROPE
-                        | BlockId::WATER
-                ) {
-                    continue;
-                }
                 let light = lmap.sample(tx, ty);
                 let sx = screen_of(tx as f32 * TILE, self.cam_x);
                 let sy = screen_of(ty as f32 * TILE, self.cam_y);
@@ -776,7 +763,7 @@ impl TerrariaApp {
             |tx, ty| shade(Color::rgb(1.0, 1.0, 1.0), lmap.sample(tx, ty)),
         );
 
-        // 液体：墙/树之后、实心物块之前。
+        // 液体后层：墙和树之后、实心物块之前。
         for ty in y0..=y1 {
             for tx in x0..=x1 {
                 if world.get(tx, ty) != BlockId::WATER {
@@ -785,7 +772,7 @@ impl TerrariaApp {
                 let light = lmap.sample(tx, ty);
                 let sx = screen_of(tx as f32 * TILE, self.cam_x);
                 let sy = screen_of(ty as f32 * TILE, self.cam_y);
-                self.draw_water_tile(draw, world, tx, ty, sx, sy, light);
+                self.draw_water_body(draw, world, tx, ty, sx, sy, light);
             }
         }
 
@@ -970,6 +957,19 @@ impl TerrariaApp {
             }
         }
 
+        // 液体前层：水面高光与落水条纹，盖在物块边缘上，仍在实体之前。
+        for ty in y0..=y1 {
+            for tx in x0..=x1 {
+                if world.get(tx, ty) != BlockId::WATER {
+                    continue;
+                }
+                let light = lmap.sample(tx, ty);
+                let sx = screen_of(tx as f32 * TILE, self.cam_x);
+                let sy = screen_of(ty as f32 * TILE, self.cam_y);
+                self.draw_water_front(draw, world, tx, ty, sx, sy, light);
+            }
+        }
+
         paint_light_halos(
             draw,
             self.cam_x,
@@ -981,12 +981,6 @@ impl TerrariaApp {
 
         paint_surface_fog(draw, world, sw, sh, self.cam_x, self.cam_y, dayness, player);
         paint_cave_fog(draw, world, sw, sh, player);
-        paint_biome_motes(
-            draw, world, sw, sh, self.cam_x, self.cam_y, self.day_t, player,
-        );
-        paint_biome_weather(
-            draw, world, sw, sh, self.cam_x, self.cam_y, self.day_t, dayness, player,
-        );
 
         for d in &world.drops {
             let sx = screen_of(d.x, self.cam_x);
@@ -1053,6 +1047,12 @@ impl TerrariaApp {
         crate::weapon::draw_projectiles(&self.projectiles, draw, self.cam_x, self.cam_y);
         crate::fx::draw_floaters(&self.damage_fx, draw, self.cam_x, self.cam_y);
         crate::fx::draw_dust(&self.dust_fx, draw, self.cam_x, self.cam_y);
+        paint_biome_motes(
+            draw, world, sw, sh, self.cam_x, self.cam_y, self.day_t, player,
+        );
+        paint_biome_weather(
+            draw, world, sw, sh, self.cam_x, self.cam_y, self.day_t, dayness, player,
+        );
 
         let (mx, my) = self.mouse;
         let menus_block_aim = self.craft_open || self.bag_open || self.chest_open.is_some();
@@ -1078,8 +1078,8 @@ impl TerrariaApp {
         crate::postprocess::paint_hurt_flash(draw, sw, sh, hurt_t);
     }
 
-    /// 按 MC 水位画半透明水体：自格底向上填充，顶面高光。
-    fn draw_water_tile(
+    /// 液体后层：格内水体，不含水面高光。
+    fn draw_water_body(
         &self,
         draw: &mut DrawList,
         world: &World,
@@ -1106,8 +1106,30 @@ impl TerrariaApp {
             light.max_with(0.35),
         );
         draw.fill_rect(Rect::new(sx, top, tile_px, h), body);
+        if world.get(tx, ty - 1) == BlockId::WATER {
+            draw.fill_rect(
+                Rect::new(sx, sy, tile_px, tile_px),
+                shade(crate::palette::WATER.shade, light.max_with(0.3)),
+            );
+        }
+    }
 
-        // 上方是空气/非水 → 画水面高光与轻波动
+    /// 液体前层：水面高光、倒影和落水条纹。
+    fn draw_water_front(
+        &self,
+        draw: &mut DrawList,
+        world: &World,
+        tx: i32,
+        ty: i32,
+        sx: f32,
+        sy: f32,
+        light: LightSample,
+    ) {
+        let lv = world.fluid_level(tx, ty);
+        let fill = lv.fill_ratio().clamp(0.05, 1.0);
+        let tile_px = screen_len(TILE);
+        let h = tile_px * fill;
+        let top = sy + tile_px - h;
         let above = world.get(tx, ty - 1);
         if above != BlockId::WATER {
             let wave = (self.day_t * 2.4 + tx as f32 * 0.7 + ty as f32 * 0.3).sin();
@@ -1166,12 +1188,6 @@ impl TerrariaApp {
             draw.fill_rect(
                 Rect::new(shimmer_x, top + 2.0, 3.0, 1.0),
                 Color::rgba(0.92, 0.97, 1.0, 0.18 + 0.1 * wave.abs()),
-            );
-        } else {
-            // 淹没柱：略加深，无高光
-            draw.fill_rect(
-                Rect::new(sx, sy, tile_px, tile_px),
-                shade(crate::palette::WATER.shade, light.max_with(0.3)),
             );
         }
 
