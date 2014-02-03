@@ -1,12 +1,12 @@
-//! 正版方块图集邻接分帧（base / dirt-blend）。
+//! 地形邻接分帧。
 //!
-//! 规则表与 TerraFirma 公开 UV 规则同构：18 像素步长、16 像素采样格、
-//! 16 位双比特邻接掩码。结论自用；不把参考仓路径写进本模块。
+//! 规则在方块变更时写入 `World` 的帧，绘制只读已写入的 `frameX` / `frameY`。
+//! 本模块的匹配函数是写入器，不是绘制期猜测。
 
 use spark_core::Rect;
 use tr_core::{BlockId, WallId};
 
-use crate::world::World;
+use crate::world::{WORLD_H, WORLD_W, World};
 
 /// 图集步长：16 像素画面 + 2 像素间距。
 pub const STRIDE: u32 = 18;
@@ -449,7 +449,7 @@ fn build_mask(world: &World, tx: i32, ty: i32, center: BlockId) -> u16 {
 }
 
 fn variant_index(tx: i32, ty: i32) -> usize {
-    // 与原版确定性变体一致：((x*7)+(y*11)) % 3
+    // 与确定性变体一致：((x*7)+(y*11)) % 3
     let v = ((tx.wrapping_mul(7)).wrapping_add(ty.wrapping_mul(11))).rem_euclid(3) as usize;
     v * 2
 }
@@ -463,7 +463,7 @@ fn match_rules(rules: &[UvRule], mask: u16, set: usize) -> Option<(u16, u16)> {
     None
 }
 
-/// 计算图集像素左上角 `(u, v)`。不可 framing 的方块返回 `None`。
+/// 按当前邻居计算地形帧。只给写入器用，绘制不要调用。
 pub fn frame_uv_px(world: &World, tx: i32, ty: i32) -> Option<(u16, u16)> {
     let id = world.get(tx, ty);
     if !is_terrain_framed(id) {
@@ -489,6 +489,34 @@ pub fn frame_uv_px(world: &World, tx: i32, ty: i32) -> Option<(u16, u16)> {
     }
 
     match_rules(BASE_RULES, mask, set)
+}
+
+/// 若这一格是可分帧地形，把规则结果写入帧。其它方块不动。
+pub fn stamp_terrain_cell(world: &mut World, tx: i32, ty: i32) {
+    if !world.in_bounds(tx, ty) || !is_terrain_framed(world.get(tx, ty)) {
+        return;
+    }
+    if let Some((u, v)) = frame_uv_px(world, tx, ty) {
+        world.set_frame(tx, ty, u as i16, v as i16);
+    }
+}
+
+/// 中心格及其八邻的地形帧。放置、破坏、转化后调用。
+pub fn stamp_terrain_around(world: &mut World, tx: i32, ty: i32) {
+    for dy in -1..=1 {
+        for dx in -1..=1 {
+            stamp_terrain_cell(world, tx + dx, ty + dy);
+        }
+    }
+}
+
+/// 全图地形帧。生成和读档结束后调用一次。
+pub fn stamp_terrain_all(world: &mut World) {
+    for y in 0..WORLD_H {
+        for x in 0..WORLD_W {
+            stamp_terrain_cell(world, x, y);
+        }
+    }
 }
 
 /// 把像素帧换成归一化 UV。`sheet_w/h` 为整张图集尺寸。

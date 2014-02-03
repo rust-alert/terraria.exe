@@ -209,6 +209,7 @@ impl World {
         let _ = spawn_x;
 
         crate::trees::stamp_frames(&mut w);
+        crate::tile_frame::stamp_terrain_all(&mut w);
         w
     }
 
@@ -569,6 +570,8 @@ impl World {
         if self.blocks[idx] == BlockId::WATER {
             self.blocks[idx] = BlockId::AIR;
             self.fluid[idx] = FluidLevel::SOURCE;
+            self.frames.remove(&(x, y));
+            crate::tile_frame::stamp_terrain_around(self, x, y);
         }
     }
 
@@ -624,6 +627,8 @@ impl World {
         self.fluid[idx] = level.clamp_valid();
         self.damage_hp.remove(&(x, y));
         self.grow_t.remove(&(x, y));
+        self.frames.remove(&(x, y));
+        crate::tile_frame::stamp_terrain_around(self, x, y);
     }
 
     /// 在地表草皮上长出一棵树（`surface_y` 为草皮格 Y）。
@@ -870,6 +875,7 @@ impl World {
         if id == BlockId::CHEST && prev != BlockId::CHEST {
             self.chests.entry((x, y)).or_default();
         }
+        crate::tile_frame::stamp_terrain_around(self, x, y);
     }
 
     pub fn chest_at(&mut self, x: i32, y: i32) -> Option<&mut HashMap<ItemId, u32>> {
@@ -1228,6 +1234,7 @@ impl World {
         self.promote_living_trees();
         self.frames.clear();
         crate::trees::stamp_frames(self);
+        crate::tile_frame::stamp_terrain_all(self);
         for y in 0..WORLD_H {
             for x in 0..WORLD_W {
                 if self.get(x, y) == BlockId::SAPLING {
@@ -1426,5 +1433,39 @@ mod tests {
         let (x, y) = sample.expect("应有树");
         world.set(x, y, BlockId::AIR);
         assert!(world.frame(x, y).is_none());
+    }
+
+    #[test]
+    fn terrain_frames_are_stored_and_follow_edits() {
+        let mut world = World::generate(4);
+        let mut dirt = None;
+        for y in 0..WORLD_H {
+            for x in 0..WORLD_W {
+                let id = world.get(x, y);
+                if !matches!(
+                    id,
+                    BlockId::DIRT
+                        | BlockId::GRASS
+                        | BlockId::STONE
+                        | BlockId::SAND
+                        | BlockId::SNOW
+                        | BlockId::COPPER_ORE
+                        | BlockId::IRON_ORE
+                ) {
+                    continue;
+                }
+                let stored = world.frame(x, y).expect("地形必须带已写入的帧");
+                let live = crate::tile_frame::frame_uv_px(&world, x, y).expect("规则能算出帧");
+                assert_eq!((stored.0 as u16, stored.1 as u16), live);
+                if dirt.is_none() && id == BlockId::DIRT && y > 0 {
+                    dirt = Some((x, y));
+                }
+            }
+        }
+        let (x, y) = dirt.expect("应有泥土");
+        world.set(x, y - 1, BlockId::STONE);
+        let stored = world.frame(x, y).expect("改邻居后泥土帧仍在");
+        let live = crate::tile_frame::frame_uv_px(&world, x, y).unwrap();
+        assert_eq!((stored.0 as u16, stored.1 as u16), live);
     }
 }

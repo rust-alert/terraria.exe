@@ -294,12 +294,14 @@ impl TileAtlas {
         Some(TileView { tex, uv })
     }
 
-    /// 按邻接 framing 采样 Content 图集。
+    /// 按已写入的帧采样 Content 图集。地形没有帧时用图集兜底，不在这里重算邻居。
     pub fn block_framed(&self, world: &World, tx: i32, ty: i32) -> Option<TileView> {
         let id = world.get(tx, ty);
         if let Some(meta) = self.sheets.get(&id.0) {
-            let uv = tile_frame::frame_uv_px(world, tx, ty)
-                .and_then(|(u, v)| tile_frame::frame_to_uv(u, v, meta.w, meta.h))
+            let uv = world
+                .frame(tx, ty)
+                .filter(|(fx, fy)| *fx >= 0 && *fy >= 0)
+                .and_then(|(fx, fy)| tile_frame::frame_to_uv(fx as u16, fy as u16, meta.w, meta.h))
                 .unwrap_or(meta.fallback_uv);
             return Some(TileView { tex: meta.tex, uv });
         }
