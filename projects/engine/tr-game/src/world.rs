@@ -102,8 +102,10 @@ pub struct World {
     /// 木箱内容（稀疏）。
     pub chests: HashMap<(i32, i32), HashMap<ItemId, u32>>,
     pub drops: Vec<GroundDrop>,
-    /// 稀疏帧。自然树在生成 / 读档时写入，绘制只读，不在绘制阶段重算。
+    /// 稀疏帧。自然树和地形在生成 / 读档 / 编辑时写入，绘制只读。
     frames: HashMap<(i32, i32), (i16, i16)>,
+    /// 背景墙帧。与前景帧分开，同一格可以同时有墙和方块。
+    wall_frames: HashMap<(i32, i32), (i16, i16)>,
 }
 
 impl World {
@@ -122,6 +124,7 @@ impl World {
             chests: HashMap::new(),
             drops: Vec::new(),
             frames: HashMap::new(),
+            wall_frames: HashMap::new(),
         };
         for x in 0..WORLD_W {
             let h = surface_height(seed, x);
@@ -210,6 +213,7 @@ impl World {
 
         crate::trees::stamp_frames(&mut w);
         crate::tile_frame::stamp_terrain_all(&mut w);
+        crate::tile_frame::stamp_walls_all(&mut w);
         w
     }
 
@@ -762,6 +766,22 @@ impl World {
         self.frames.insert((x, y), (frame_x, frame_y));
     }
 
+    /// 已写入的背景墙帧。
+    pub fn wall_frame(&self, x: i32, y: i32) -> Option<(i16, i16)> {
+        if !self.in_bounds(x, y) {
+            return None;
+        }
+        self.wall_frames.get(&(x, y)).copied()
+    }
+
+    /// 写入背景墙帧。
+    pub fn set_wall_frame(&mut self, x: i32, y: i32, frame_x: i16, frame_y: i16) {
+        if !self.in_bounds(x, y) {
+            return;
+        }
+        self.wall_frames.insert((x, y), (frame_x, frame_y));
+    }
+
     pub fn y_in_bounds(&self, y: i32) -> bool {
         y >= 0 && y < WORLD_H
     }
@@ -795,6 +815,8 @@ impl World {
         }
         self.walls[(y * WORLD_W + x) as usize] = id;
         self.wall_hp.remove(&(x, y));
+        self.wall_frames.remove(&(x, y));
+        crate::tile_frame::stamp_walls_around(self, x, y);
     }
 
     /// 墙剩余 HP。
@@ -833,6 +855,8 @@ impl World {
         if next == 0 {
             self.wall_hp.remove(&key);
             self.walls[(y * WORLD_W + x) as usize] = WallId::NONE;
+            self.wall_frames.remove(&key);
+            crate::tile_frame::stamp_walls_around(self, x, y);
             Some(id)
         } else {
             self.wall_hp.insert(key, next);
@@ -1319,6 +1343,8 @@ impl World {
         for (i, v) in vals.into_iter().enumerate() {
             self.walls[i] = WallId(v);
         }
+        self.wall_frames.clear();
+        crate::tile_frame::stamp_walls_all(self);
         true
     }
 }
@@ -1467,5 +1493,32 @@ mod tests {
         let stored = world.frame(x, y).expect("改邻居后泥土帧仍在");
         let live = crate::tile_frame::frame_uv_px(&world, x, y).unwrap();
         assert_eq!((stored.0 as u16, stored.1 as u16), live);
+    }
+
+    #[test]
+    fn wall_frames_are_stored_and_follow_edits() {
+        let mut world = World::generate(5);
+        let mut sample = None;
+        for y in 0..WORLD_H {
+            for x in 0..WORLD_W {
+                if world.get_wall(x, y) == tr_core::WallId::NONE {
+                    continue;
+                }
+                let stored = world.wall_frame(x, y).expect("墙必须带已写入的帧");
+                let live = crate::tile_frame::wall_frame_uv_px(&world, x, y).expect("规则能算出墙帧");
+                assert_eq!((stored.0 as u16, stored.1 as u16), live);
+                if sample.is_none() {
+                    sample = Some((x, y));
+                }
+            }
+        }
+        let (x, y) = sample.expect("应有背景墙");
+        world.set_wall(x, y, tr_core::WallId::NONE);
+        assert!(world.wall_frame(x, y).is_none());
+        if world.in_bounds(x + 1, y) && world.get_wall(x + 1, y) != tr_core::WallId::NONE {
+            let stored = world.wall_frame(x + 1, y).unwrap();
+            let live = crate::tile_frame::wall_frame_uv_px(&world, x + 1, y).unwrap();
+            assert_eq!((stored.0 as u16, stored.1 as u16), live);
+        }
     }
 }

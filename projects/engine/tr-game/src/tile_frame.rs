@@ -572,7 +572,7 @@ fn build_wall_mask(world: &World, tx: i32, ty: i32, center: WallId) -> u16 {
     mask
 }
 
-/// 背景墙图集 UV（复用 base 规则表）。
+/// 背景墙帧。只给写入器用。
 pub fn wall_frame_uv_px(world: &World, tx: i32, ty: i32) -> Option<(u16, u16)> {
     let id = world.get_wall(tx, ty);
     if id == WallId::NONE {
@@ -581,6 +581,34 @@ pub fn wall_frame_uv_px(world: &World, tx: i32, ty: i32) -> Option<(u16, u16)> {
     let mask = build_wall_mask(world, tx, ty, id);
     let set = variant_index(tx, ty);
     match_rules(BASE_RULES, mask, set)
+}
+
+/// 若这一格有墙，写入墙帧。
+pub fn stamp_wall_cell(world: &mut World, tx: i32, ty: i32) {
+    if !world.in_bounds(tx, ty) || world.get_wall(tx, ty) == WallId::NONE {
+        return;
+    }
+    if let Some((u, v)) = wall_frame_uv_px(world, tx, ty) {
+        world.set_wall_frame(tx, ty, u as i16, v as i16);
+    }
+}
+
+/// 中心格及其八邻的墙帧。
+pub fn stamp_walls_around(world: &mut World, tx: i32, ty: i32) {
+    for dy in -1..=1 {
+        for dx in -1..=1 {
+            stamp_wall_cell(world, tx + dx, ty + dy);
+        }
+    }
+}
+
+/// 全图墙帧。
+pub fn stamp_walls_all(world: &mut World) {
+    for y in 0..WORLD_H {
+        for x in 0..WORLD_W {
+            stamp_wall_cell(world, x, y);
+        }
+    }
 }
 
 #[cfg(test)]

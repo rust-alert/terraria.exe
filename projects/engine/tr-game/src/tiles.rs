@@ -319,15 +319,17 @@ impl TileAtlas {
         Some(TileView { tex, uv: FULL_UV })
     }
 
-    /// 按邻接 framing 采样 Content 墙图集。
+    /// 按已写入的墙帧采样。没有帧时用图集兜底，不在这里重算邻居。
     pub fn wall_framed(&self, world: &World, tx: i32, ty: i32) -> Option<TileView> {
         let id = world.get_wall(tx, ty);
         if id == WallId::NONE {
             return None;
         }
         if let Some(meta) = self.wall_sheets.get(&id.0) {
-            let uv = tile_frame::wall_frame_uv_px(world, tx, ty)
-                .and_then(|(u, v)| tile_frame::frame_to_uv(u, v, meta.w, meta.h))
+            let uv = world
+                .wall_frame(tx, ty)
+                .filter(|(fx, fy)| *fx >= 0 && *fy >= 0)
+                .and_then(|(fx, fy)| tile_frame::frame_to_uv(fx as u16, fy as u16, meta.w, meta.h))
                 .unwrap_or(meta.fallback_uv);
             return Some(TileView { tex: meta.tex, uv });
         }
