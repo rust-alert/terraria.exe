@@ -70,8 +70,10 @@ impl BlockId {
     pub const WATER: Self = Self(21);
     /// 绳索（可穿行，可攀爬，便于竖井）。
     pub const ROPE: Self = Self(22);
-    /// 自然树干。可砍、可当放置支点，不挡人、敌、弹和钩爪。
-    pub const TREE: Self = Self(23);
+    /// 自然树。编号对齐正版 `TileID.Trees`（5），不是自造夹具 id。
+    pub const TREES: Self = Self(5);
+    /// [`Self::TREES`] 的别名。
+    pub const TREE: Self = Self::TREES;
 }
 
 impl BlockId {
@@ -90,7 +92,7 @@ impl BlockId {
                 | Self::LADDER
                 | Self::ROPE
                 | Self::WATER
-                | Self::TREE
+                | Self::TREES
         )
     }
 
@@ -109,12 +111,22 @@ impl BlockId {
                 | Self::LADDER
                 | Self::ROPE
                 | Self::WATER
-                | Self::TREE
+                | Self::TREES
         )
     }
 
     pub fn is_fluid(self) -> bool {
         self == Self::WATER
+    }
+
+    /// 是否自然树干。优先读内容表 `is_tree`，回退正版 Trees id。
+    pub fn is_tree(self) -> bool {
+        if let Some(c) = try_content() {
+            if let Some(d) = c.block(self) {
+                return d.is_tree;
+            }
+        }
+        self == Self::TREES
     }
 
     pub fn is_ladder(self) -> bool {
@@ -189,7 +201,7 @@ impl BlockId {
             Self::LEAF => 20,
             Self::PLATFORM | Self::BED => 40,
             Self::DIRT | Self::GRASS | Self::SAND | Self::SNOW => 50,
-            Self::WOOD | Self::TREE | Self::CHEST => 60,
+            Self::WOOD | Self::TREES | Self::CHEST => 60,
             Self::COPPER_ORE => 80,
             Self::STONE | Self::WORKBENCH | Self::FURNACE => 100,
             Self::IRON_ORE => 150,
@@ -219,7 +231,7 @@ impl BlockId {
             Self::BED => "床",
             Self::WATER => "水",
             Self::ROPE => "绳索",
-            Self::TREE => "树",
+            Self::TREES => "树",
             _ => "未知",
         }
     }
@@ -238,7 +250,7 @@ impl BlockId {
         match self {
             Self::DIRT | Self::GRASS => Some(ItemId::DIRT),
             Self::STONE => Some(ItemId::STONE),
-            Self::WOOD | Self::TREE => Some(ItemId::WOOD),
+            Self::WOOD | Self::TREES => Some(ItemId::WOOD),
             Self::WORKBENCH => Some(ItemId::WORKBENCH),
             Self::SAPLING => Some(ItemId::SAPLING),
             Self::TORCH => Some(ItemId::TORCH),

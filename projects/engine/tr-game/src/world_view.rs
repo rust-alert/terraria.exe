@@ -796,7 +796,7 @@ impl TerrariaApp {
                     continue;
                 }
                 // 自然树已由背景层绘制；液体已画；遗留假叶不画。
-                if id == BlockId::TREE
+                if id.is_tree()
                     || id == BlockId::LEAF
                     || id == BlockId::WATER
                     || (self.tree_atlas.ready() && crate::trees::hides_block(world, tx, ty))
@@ -840,7 +840,8 @@ impl TerrariaApp {
                         BlockId::DIRT => DIRT.base,
                         BlockId::GRASS => GRASS.base,
                         BlockId::STONE => STONE.base,
-                        BlockId::WOOD | BlockId::TREE => Color::rgb(0.55, 0.35, 0.18),
+                        BlockId::WOOD => Color::rgb(0.55, 0.35, 0.18),
+                        id if id.is_tree() => Color::rgb(0.55, 0.35, 0.18),
                         BlockId::LEAF => Color::rgba(0.22, 0.55, 0.22, 0.85),
                         BlockId::WORKBENCH => Color::rgb(0.62, 0.42, 0.22),
                         BlockId::SAPLING => Color::rgb(0.35, 0.72, 0.28),

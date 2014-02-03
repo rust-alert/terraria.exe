@@ -21,6 +21,8 @@ fn register_block_and_faces() {
             texture_top: String::new(),
             texture_side: String::new(),
             texture_bottom: String::new(),
+            is_tree: false,
+            frame_important: false,
         },
     )
     .unwrap();

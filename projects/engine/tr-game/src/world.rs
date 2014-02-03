@@ -1247,7 +1247,9 @@ impl World {
             self.fluid = vec![FluidLevel::SOURCE; expect];
         }
         for (i, v) in vals.into_iter().enumerate() {
-            self.blocks[i] = BlockId(v);
+            // 旧会话曾把树写成自造 id 23；迁到正版 Trees = 5。
+            let id = if v == 23 { BlockId::TREES } else { BlockId(v) };
+            self.blocks[i] = id;
             if self.blocks[i] != BlockId::WATER {
                 self.fluid[i] = FluidLevel::SOURCE;
             }
@@ -1405,6 +1407,8 @@ mod tests {
         assert!(!BlockId::TREE.solid());
         assert_eq!(BlockId::TREE.drop_item(), Some(ItemId::WOOD));
         assert!(BlockId::WOOD.blocks_motion());
+        assert_eq!(BlockId::TREES.0, 5, "须对齐正版 TileID.Trees");
+        assert!(BlockId::TREES.is_tree());
     }
 
     #[test]

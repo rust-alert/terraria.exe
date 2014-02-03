@@ -81,7 +81,7 @@ impl TileAtlas {
             BlockId::GRASS,
             BlockId::STONE,
             BlockId::WOOD,
-            BlockId::TREE,
+            BlockId::TREES,
             BlockId::LEAF,
             BlockId::WORKBENCH,
             BlockId::SAPLING,
@@ -163,7 +163,7 @@ impl TileAtlas {
             BlockId::GRASS,
             BlockId::STONE,
             BlockId::WOOD,
-            BlockId::TREE,
+            BlockId::TREES,
             BlockId::LEAF,
             BlockId::WORKBENCH,
             BlockId::SAPLING,
@@ -837,7 +837,8 @@ fn pixel_for(id: BlockId, x: u32, y: u32) -> Color {
         BlockId::SNOW => lit_face(SNOW, x, y),
         BlockId::COPPER_ORE => pixel_ore(x, y, COPPER, 4),
         BlockId::IRON_ORE => pixel_ore(x, y, IRON, 7),
-        BlockId::WOOD | BlockId::TREE => pixel_wood(x, y),
+        BlockId::WOOD => pixel_wood(x, y),
+        id if id.is_tree() => pixel_wood(x, y),
         BlockId::LEAF => pixel_leaf(x, y),
         BlockId::WORKBENCH => {
             if y < 3 {

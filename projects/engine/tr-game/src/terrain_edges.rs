@@ -20,12 +20,14 @@ fn shade(c: Color, light: LightSample) -> Color {
 }
 
 fn is_open(id: BlockId) -> bool {
+    if id.is_tree() {
+        return true;
+    }
     matches!(
         id,
         BlockId::AIR
             | BlockId::WATER
             | BlockId::LEAF
-            | BlockId::TREE
             | BlockId::SAPLING
             | BlockId::TORCH
             | BlockId::LADDER

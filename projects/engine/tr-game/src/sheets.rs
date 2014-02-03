@@ -1,11 +1,15 @@
 //! `Tiles_N.xnb` / `Item_N.xnb` 文件名里的编号。
 //!
-//! 这些数字来自文件名，不是夹具 `BlockId` / `ItemId`。
+//! 已与正版类型 id 对齐的物块（如 Trees = 5）直接用 `id.0`。
+//! 其余夹具 id 仍暂用手工映射，后续按正版编号迁完后删除对照表。
 
 use tr_core::{BlockId, ItemId, WallId};
 
-/// 夹具方块对应的 `Tiles_{n}.xnb`。没有对应文件时不画这张图。
+/// 方块对应的 `Tiles_{n}.xnb`。没有对应文件时不画这张图。
 pub(crate) fn tile_file(id: BlockId) -> Option<u32> {
+    if id.is_tree() {
+        return Some(id.0);
+    }
     Some(match id {
         BlockId::DIRT => 0,
         BlockId::STONE => 1,
@@ -18,8 +22,8 @@ pub(crate) fn tile_file(id: BlockId) -> Option<u32> {
         BlockId::PLATFORM => 19,
         BlockId::SAPLING => 20,
         BlockId::CHEST => 21,
+        // 正版 Wood Block = 30。当前 `WOOD` 夹具 id 仍为 6，仅纹理映射对齐。
         BlockId::WOOD => 30,
-        BlockId::TREE => 5,
         BlockId::SAND => 53,
         BlockId::BED => 79,
         BlockId::SNOW => 147,

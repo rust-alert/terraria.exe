@@ -177,7 +177,7 @@ fn has_support(world: &World, tx: i32, ty: i32) -> bool {
     for (dx, dy) in DIRS {
         let n = world.get(tx + dx, ty + dy);
         // 树干不挡移动，但仍能挂平台和火把。
-        if n.blocks_motion() || n == BlockId::TREE {
+        if n.blocks_motion() || n.is_tree() {
             return true;
         }
     }

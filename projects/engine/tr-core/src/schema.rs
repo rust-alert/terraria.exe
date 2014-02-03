@@ -30,6 +30,8 @@ pub fn block_def_from_schema(path: &ContentPath, block: &TerrariaBlock) -> Block
         texture_top,
         texture_side,
         texture_bottom,
+        is_tree: false,
+        frame_important: false,
     }
 }
 

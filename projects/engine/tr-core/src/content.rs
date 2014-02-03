@@ -133,6 +133,10 @@ pub struct BlockDef {
     pub texture_top: String,
     pub texture_side: String,
     pub texture_bottom: String,
+    /// 是否自然树干（正版 Trees 一类；树冠走特殊绘制）。
+    pub is_tree: bool,
+    /// 是否 frame-important（放置时带 `frameX` / `frameY`）。
+    pub frame_important: bool,
 }
 
 impl BlockDef {
@@ -261,6 +265,8 @@ impl ContentRegistry {
             texture_top: String::new(),
             texture_side: String::new(),
             texture_bottom: String::new(),
+            is_tree: false,
+            frame_important: false,
         })
     }
 
@@ -422,13 +428,15 @@ pub fn install_builtin_fixture() {
         (19, "terraria:furnace", "熔炉", true, true, 100, 5),
         (20, "terraria:bed", "床", true, true, 40, 0),
         (21, "terraria:water", "水", false, false, 0, 0),
-        (23, "terraria:tree", "树", false, false, 60, 0),
+        // 正版 TileID.Trees = 5。禁止再使用自造夹具编号。
+        (5, "terraria:trees", "树", false, false, 60, 0),
     ];
     for &(id, key, name, solid, motion, hp, light) in blocks {
         let tex = format!(
             "textures/{}.png",
             key.split(':').nth(1).unwrap_or("unknown")
         );
+        let is_tree = id == 5;
         let _ = reg.register_block_at(
             BlockId(id),
             BlockDef {
@@ -451,6 +459,8 @@ pub fn install_builtin_fixture() {
                 texture_top: String::new(),
                 texture_side: String::new(),
                 texture_bottom: String::new(),
+                is_tree,
+                frame_important: is_tree || matches!(id, 4 | 9 | 11 | 12 | 13 | 14 | 19 | 20),
             },
         );
     }

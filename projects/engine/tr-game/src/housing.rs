@@ -8,6 +8,9 @@ use crate::world::{WORLD_H, WORLD_W, World, x_in_bounds};
 
 /// 室内可通行 / 可计入面积的前景。
 fn is_room_fill(id: BlockId) -> bool {
+    if id.is_tree() {
+        return true;
+    }
     matches!(
         id,
         BlockId::AIR
@@ -16,7 +19,6 @@ fn is_room_fill(id: BlockId) -> bool {
             | BlockId::LADDER
             | BlockId::ROPE
             | BlockId::LEAF
-            | BlockId::TREE
             | BlockId::SAPLING
             | BlockId::CHEST
             | BlockId::WORKBENCH

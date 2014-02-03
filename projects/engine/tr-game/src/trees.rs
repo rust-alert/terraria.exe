@@ -153,7 +153,7 @@ fn upload(draw: &mut DrawList, path: &std::path::Path) -> Option<Sheet> {
 
 /// 自然树干格由本模块绘制时，跳过通用方块通道。
 pub fn hides_block(world: &World, tx: i32, ty: i32) -> bool {
-    world.get(tx, ty) == BlockId::TREE && trunk_at(world, tx).is_some()
+    world.get(tx, ty).is_tree() && trunk_at(world, tx).is_some()
 }
 
 struct Trunk {
@@ -175,7 +175,7 @@ fn trunk_at(world: &World, tx: i32) -> Option<Trunk> {
             BlockId::GRASS | BlockId::DIRT | BlockId::SNOW | BlockId::SAND | BlockId::STONE
         ) {
             // 可能的土壤：上方若是树干则确认。
-            if y > 0 && world.get(tx, y - 1) == BlockId::TREE {
+            if y > 0 && world.get(tx, y - 1).is_tree() {
                 found_soil = Some(y);
                 break;
             }
@@ -184,17 +184,17 @@ fn trunk_at(world: &World, tx: i32) -> Option<Trunk> {
     }
     let soil = found_soil.or_else(|| {
         let s = world.surface_at(tx);
-        if world.get(tx, s - 1) == BlockId::TREE {
+        if world.get(tx, s - 1).is_tree() {
             Some(s)
         } else {
             None
         }
     })?;
-    if world.get(tx, soil - 1) != BlockId::TREE {
+    if !world.get(tx, soil - 1).is_tree() {
         return None;
     }
     let mut top = soil - 1;
-    while top > 1 && world.get(tx, top - 1) == BlockId::TREE {
+    while top > 1 && world.get(tx, top - 1).is_tree() {
         top -= 1;
     }
     Some(Trunk { top, soil })
