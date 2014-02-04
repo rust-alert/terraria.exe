@@ -13,7 +13,7 @@ mod wld;
 pub use biome::{BiomeId, biome_at};
 pub use content::{
     BlockDef, BlockFaceKind, ContentRegistry, ItemDef, block_def, content, install,
-    install_builtin_fixture, is_installed, item_def, try_content,
+    install_builtin_fixture, is_installed, item_def, parse_block_catalog, try_content,
 };
 pub use damage::{DamageHit, DamageType, ResistProfile, resolve_damage};
 pub use fluid::FluidLevel;
@@ -33,7 +33,10 @@ use std::sync::Arc;
 
 use spark_core::{ErrorArg, ErrorArgs};
 
-/// 方块标识。
+/// 方块标识。数值是类型 id。
+///
+/// 下面少量常量只给仍按名字引用的玩法用。新增方块只在 `data/blocks.tbl` 加一行，
+/// 不要再为每种方块增加常量。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlockId(pub u32);
 
@@ -116,6 +119,11 @@ impl BlockId {
     }
 
     pub fn is_fluid(self) -> bool {
+        if let Some(c) = try_content() {
+            if let Some(d) = c.block(self) {
+                return d.is_fluid;
+            }
+        }
         self == Self::WATER
     }
 
@@ -140,6 +148,11 @@ impl BlockId {
 
     /// 只挡自上而下的脚，可从下方穿过，也可下穿。
     pub fn is_platform(self) -> bool {
+        if let Some(c) = try_content() {
+            if let Some(d) = c.block(self) {
+                return d.is_platform;
+            }
+        }
         self == Self::PLATFORM
     }
 
@@ -186,7 +199,36 @@ impl BlockId {
 
     /// 是否显著遮挡光照传播（平台 / 半透明叶不挡）。
     pub fn blocks_light(self) -> bool {
-        self.solid() && !matches!(self, Self::PLATFORM)
+        self.solid() && !self.is_platform()
+    }
+
+    /// 放置时是否自带帧。未登记的 id 不是 frame-important。
+    pub fn frame_important(self) -> bool {
+        if let Some(c) = try_content() {
+            if let Some(d) = c.block(self) {
+                return d.frame_important;
+            }
+        }
+        matches!(
+            self,
+            Self::CHEST
+                | Self::WORKBENCH
+                | Self::FURNACE
+                | Self::BED
+                | Self::TORCH
+                | Self::TREES
+                | Self::SAPLING
+                | Self::PLATFORM
+                | Self::LADDER
+                | Self::ROPE
+        )
+    }
+
+    /// `Tiles_N` 文件编号。没有对应图时为 `None`。
+    pub fn texture_file(self) -> Option<u32> {
+        try_content()
+            .and_then(|c| c.block(self))
+            .and_then(|d| d.texture_file)
     }
 
     pub fn max_hp(self) -> u16 {
@@ -247,6 +289,11 @@ impl BlockId {
     }
 
     pub fn drop_item(self) -> Option<ItemId> {
+        if let Some(c) = try_content() {
+            if let Some(d) = c.block(self) {
+                return d.drop;
+            }
+        }
         match self {
             Self::DIRT | Self::GRASS => Some(ItemId::DIRT),
             Self::STONE => Some(ItemId::STONE),

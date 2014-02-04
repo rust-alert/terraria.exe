@@ -1,4 +1,4 @@
-//! 夹具方块纹理。Content 图集不按夹具 ID 取号。
+//! 方块纹理。图集编号来自内容目录，不按类型常量取号。
 //! 地形块按邻接 framing 从 `Tiles_N` 采样 16 像素格（步长 18）。
 
 use std::collections::HashMap;
@@ -158,28 +158,11 @@ impl TileAtlas {
         assets: &crate::content_boot::ContentAssets,
     ) -> u32 {
         let mut n = 0u32;
-        for id in [
-            BlockId::DIRT,
-            BlockId::GRASS,
-            BlockId::STONE,
-            BlockId::WOOD,
-            BlockId::TREES,
-            BlockId::LEAF,
-            BlockId::WORKBENCH,
-            BlockId::SAPLING,
-            BlockId::TORCH,
-            BlockId::PLATFORM,
-            BlockId::CHEST,
-            BlockId::LADDER,
-            BlockId::ROPE,
-            BlockId::SAND,
-            BlockId::SNOW,
-            BlockId::COPPER_ORE,
-            BlockId::IRON_ORE,
-            BlockId::FURNACE,
-            BlockId::BED,
-        ] {
-            let Some(file_id) = crate::sheets::tile_file(id) else {
+        let Some(content) = tr_core::try_content() else {
+            return n;
+        };
+        for (id, def) in content.iter_blocks() {
+            let Some(file_id) = def.texture_file else {
                 continue;
             };
             let Some(path) = assets.tile_sheets.get(&file_id) else {
@@ -194,7 +177,7 @@ impl TileAtlas {
             };
             let w = image.width();
             let h = image.height();
-            let framed = is_framed_terrain(id) && w >= CELL && h >= CELL;
+            let framed = def.framed_terrain && w >= CELL && h >= CELL;
             let fallback_uv = if framed {
                 tile_frame::frame_to_uv(18, 18, w, h).unwrap_or(FULL_UV)
             } else {
@@ -375,19 +358,6 @@ fn upload_slime_frame(draw: &mut DrawList, path: &Path) -> Option<(TextureId, Re
     };
     let gpu = upload_rgba(draw, image.width(), image.height(), image.into_rgba())?;
     Some((gpu, uv))
-}
-
-fn is_framed_terrain(id: BlockId) -> bool {
-    matches!(
-        id,
-        BlockId::DIRT
-            | BlockId::GRASS
-            | BlockId::STONE
-            | BlockId::SAND
-            | BlockId::SNOW
-            | BlockId::COPPER_ORE
-            | BlockId::IRON_ORE
-    )
 }
 
 fn best_cell_uv(image: &PixelImage, grass: bool) -> Option<Rect> {

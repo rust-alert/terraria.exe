@@ -1,0 +1,25 @@
+# 方块目录。一行一种。新增方块只加一行，不要在 Rust 里为它增加常量。
+# 列：id key name solid motion hp light sheet drop tree framed platform fluid ladder replaceable mine terrain
+# sheet / drop / mine 为 - 表示无。布尔列为 0 或 1。name 不含空格。
+# sheet 是 Tiles_N 文件编号，可以和类型 id 不同（类型 id 尚未迁完时）。
+# terrain 为 1 表示按邻格规则切地形图集。
+1 terraria:dirt 泥土 1 1 50 0 0 1 0 0 0 0 0 0 - 1
+2 terraria:grass 草皮 1 1 50 0 2 1 0 0 0 0 0 0 - 1
+3 terraria:stone 石头 1 1 100 0 1 3 0 0 0 0 0 0 - 1
+5 terraria:trees 树 0 0 60 0 5 6 1 1 0 0 0 0 - 0
+6 terraria:wood 原木 1 1 60 0 30 6 0 0 0 0 0 0 - 0
+7 terraria:leaf 树叶 0 0 20 0 192 - 0 0 0 0 0 1 - 0
+8 terraria:workbench 工作台 1 1 100 0 18 8 0 1 0 0 0 0 - 0
+9 terraria:sapling 树苗 0 0 10 0 20 9 0 1 0 0 0 1 - 0
+11 terraria:torch 火把 0 0 10 8 4 14 0 1 0 0 0 1 - 0
+12 terraria:platform 木平台 1 1 40 0 19 16 0 1 1 0 0 0 - 0
+13 terraria:chest 木箱 1 1 60 0 21 17 0 1 0 0 0 0 - 0
+14 terraria:ladder 木梯 0 0 10 0 213 18 0 1 0 0 1 1 - 0
+15 terraria:sand 沙子 1 1 50 0 53 23 0 0 0 0 0 0 - 1
+16 terraria:snow 雪块 1 1 50 0 147 24 0 0 0 0 0 0 - 1
+17 terraria:copper_ore 铜矿 1 1 80 0 7 25 0 0 0 0 0 0 20 1
+18 terraria:iron_ore 铁矿 1 1 150 0 6 26 0 0 0 0 0 0 35 1
+19 terraria:furnace 熔炉 1 1 100 5 17 29 0 1 0 0 0 0 - 0
+20 terraria:bed 床 1 1 40 0 79 30 0 1 0 0 0 0 - 0
+21 terraria:water 水 0 0 0 0 - - 0 0 0 1 0 1 - 0
+22 terraria:rope 绳索 0 0 10 0 213 36 0 1 0 0 1 0 - 0

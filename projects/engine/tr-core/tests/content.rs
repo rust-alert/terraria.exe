@@ -23,6 +23,10 @@ fn register_block_and_faces() {
             texture_bottom: String::new(),
             is_tree: false,
             frame_important: false,
+            texture_file: None,
+            is_platform: false,
+            is_fluid: false,
+            framed_terrain: false,
         },
     )
     .unwrap();
