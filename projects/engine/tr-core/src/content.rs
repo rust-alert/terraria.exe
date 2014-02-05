@@ -1,8 +1,8 @@
-//! 内容注册表。方块属性来自 `data/blocks.tbl`，不靠枚举臂。
+//! 内容注册表。
 //!
 //! - 运行时数值 ID 仍存世界格里（省空间、存档稳）。
 //! - 字符串 `key`（如 `terraria:dirt`）是 mod 稳定标识。
-//! - 新增方块只加目录一行。少量 `BlockId` 常量只给仍按名字引用的玩法用。
+//! - 玩法行由 [`crate::ContentModule`] 在启动时登记，不从仓库内表文件灌入。
 
 use std::collections::HashMap;
 use std::fmt;
@@ -266,12 +266,13 @@ impl ContentRegistry {
     pub fn block_or_unknown(&self, id: BlockId) -> BlockDef {
         self.block(id).cloned().unwrap_or_else(|| BlockDef {
             key: format!("unknown:{}", id.0),
-            name: "未知".into(),
-            solid: true,
-            blocks_motion: true,
+            name: "未登记".into(),
+            // 未登记不是默认实心。查询方应视为 Unsupported。
+            solid: false,
+            blocks_motion: false,
             ladder: false,
             replaceable: false,
-            max_hp: 100,
+            max_hp: 0,
             light_radius: 0,
             mine_power_need: None,
             drop: None,
@@ -422,136 +423,9 @@ pub fn item_def(id: ItemId) -> ItemDef {
     content().item_or_unknown(id)
 }
 
-/// 从目录文本登记方块。一行一种，新增方块不必新增 Rust 常量。
+/// 启动时安装空内容图。玩法行须由 [`crate::boot_content_modules`] 注入。
 ///
-/// 列（空白分隔，`#` 开头为注释）：
-/// `id key name solid motion hp light sheet drop tree framed platform fluid ladder replaceable mine terrain`
-/// `sheet` / `drop` / `mine` 用 `-` 表示无。布尔列为 `0` 或 `1`。
-pub fn parse_block_catalog(text: &str) -> Result<Vec<(u32, BlockDef)>, String> {
-    let mut out = Vec::new();
-    let mut seen = std::collections::BTreeSet::new();
-    for (lineno, raw) in text.lines().enumerate() {
-        let line = raw.split('#').next().unwrap_or("").trim();
-        if line.is_empty() {
-            continue;
-        }
-        let t: Vec<&str> = line.split_whitespace().collect();
-        if t.len() != 17 {
-            return Err(format!(
-                "方块目录第 {} 行列数应为 17，实际 {}",
-                lineno + 1,
-                t.len()
-            ));
-        }
-        let at = |what: &str| format!("方块目录第 {} 行{what}无效", lineno + 1);
-        let id: u32 = t[0].parse().map_err(|_| at(" id "))?;
-        if !seen.insert(id) {
-            return Err(format!("方块目录重复 id {id}"));
-        }
-        let key = t[1].to_string();
-        let stem = key
-            .split(':')
-            .nth(1)
-            .unwrap_or("unknown")
-            .to_string();
-        out.push((
-            id,
-            BlockDef {
-                key,
-                name: t[2].to_string(),
-                solid: catalog_flag(t[3], lineno)?,
-                blocks_motion: catalog_flag(t[4], lineno)?,
-                max_hp: t[5].parse().map_err(|_| at(" hp "))?,
-                light_radius: t[6].parse().map_err(|_| at(" light "))?,
-                texture_file: catalog_opt_u32(t[7], lineno)?,
-                drop: catalog_opt_u32(t[8], lineno)?.map(ItemId),
-                is_tree: catalog_flag(t[9], lineno)?,
-                frame_important: catalog_flag(t[10], lineno)?,
-                is_platform: catalog_flag(t[11], lineno)?,
-                is_fluid: catalog_flag(t[12], lineno)?,
-                ladder: catalog_flag(t[13], lineno)?,
-                replaceable: catalog_flag(t[14], lineno)?,
-                mine_power_need: catalog_opt_u32(t[15], lineno)?.map(|n| n as u16),
-                framed_terrain: catalog_flag(t[16], lineno)?,
-                color: [0.5, 0.5, 0.5, 1.0],
-                texture: format!("textures/{stem}.png"),
-                texture_top: String::new(),
-                texture_side: String::new(),
-                texture_bottom: String::new(),
-            },
-        ));
-    }
-    Ok(out)
-}
-
-fn catalog_flag(tok: &str, lineno: usize) -> Result<bool, String> {
-    match tok {
-        "1" => Ok(true),
-        "0" => Ok(false),
-        _ => Err(format!("方块目录第 {} 行布尔列须为 0 或 1", lineno + 1)),
-    }
-}
-
-fn catalog_opt_u32(tok: &str, lineno: usize) -> Result<Option<u32>, String> {
-    if tok == "-" {
-        return Ok(None);
-    }
-    tok.parse()
-        .map(Some)
-        .map_err(|_| format!("方块目录第 {} 行数字无效", lineno + 1))
-}
-
-/// 内置方块来自 `data/blocks.tbl`。新增方块只加一行，不要再写常量或 `match`。
+/// 保留此函数是为了旧调用点过渡。新代码请直接 `boot_content_modules`。
 pub fn install_builtin_fixture() {
-    if is_installed() {
-        return;
-    }
-    let mut reg = ContentRegistry::new();
-    let blocks = parse_block_catalog(include_str!("../data/blocks.tbl")).expect("blocks.tbl");
-    for (id, def) in blocks {
-        let _ = reg.register_block_at(BlockId(id), def);
-    }
-    let _ = reg.set_block_faces(
-        "terraria:grass",
-        "textures/grass_top.png".into(),
-        "textures/grass_side.png".into(),
-        "textures/dirt.png".into(),
-    );
-    let _ = reg.set_block_faces(
-        "terraria:wood",
-        "textures/log_top.png".into(),
-        "textures/log_side.png".into(),
-        "textures/log_top.png".into(),
-    );
-    reg.seal();
-    install(reg);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::parse_block_catalog;
-    use crate::ItemId;
-
-    #[test]
-    fn catalog_row_does_not_need_a_constant() {
-        let text = "400 terraria:example 示例 1 1 10 0 400 6 0 0 0 0 0 0 - 0\n";
-        let rows = parse_block_catalog(text).unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].0, 400);
-        assert_eq!(rows[0].1.name, "示例");
-        assert_eq!(rows[0].1.texture_file, Some(400));
-        assert_eq!(rows[0].1.drop, Some(ItemId(6)));
-        assert!(!rows[0].1.is_tree);
-    }
-
-    #[test]
-    fn builtin_catalog_trees_are_id_five() {
-        let rows = parse_block_catalog(include_str!("../data/blocks.tbl")).unwrap();
-        let tree = rows.iter().find(|row| row.0 == 5).expect("trees");
-        assert!(tree.1.is_tree);
-        assert!(!tree.1.solid);
-        assert!(!tree.1.blocks_motion);
-        assert_eq!(tree.1.texture_file, Some(5));
-        assert_eq!(tree.1.drop, Some(ItemId(6)));
-    }
+    let _ = crate::boot_content_modules(&[]);
 }

@@ -3,18 +3,21 @@
 
 mod biome;
 mod content;
+mod content_module;
 mod damage;
 mod fluid;
 mod schema;
 mod tile;
+mod tile_sets;
 mod weapon;
 mod wld;
 
 pub use biome::{BiomeId, biome_at};
 pub use content::{
     BlockDef, BlockFaceKind, ContentRegistry, ItemDef, block_def, content, install,
-    install_builtin_fixture, is_installed, item_def, parse_block_catalog, try_content,
+    install_builtin_fixture, is_installed, item_def, try_content,
 };
+pub use content_module::{ContentModule, TileRegistration, boot_content_modules, tile_sets_from_registry};
 pub use damage::{DamageHit, DamageType, ResistProfile, resolve_damage};
 pub use fluid::FluidLevel;
 pub use schema::{
@@ -22,6 +25,7 @@ pub use schema::{
     placeable_item_from_schema, tool_item_from_schema,
 };
 pub use tile::{LiquidKind, SlopeKind, Tile};
+pub use tile_sets::{TileSets, install_tile_sets, try_tile_sets};
 pub use weapon::{WeaponKind, WeaponStats};
 pub use wld::{
     WORLD_VERSION_1_4_5, WORLD_VERSION_1_4_5_8, WldCell, WldError, WldFileHeader, WldProperties,
@@ -35,8 +39,9 @@ use spark_core::{ErrorArg, ErrorArgs};
 
 /// 方块标识。数值是类型 id。
 ///
-/// 下面少量常量只给仍按名字引用的玩法用。新增方块只在 `data/blocks.tbl` 加一行，
-/// 不要再为每种方块增加常量。
+/// 空气在原版里是格子未激活，不是类型 0。类型 0 是泥土。
+/// 下面的常量只覆盖当前玩法还在按名字引用的类型。属性查 [`crate::TileSets`]，
+/// 玩法行由 [`crate::ContentModule`] 登记。禁止再维护仓库内表文件。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlockId(pub u32);
 
@@ -81,6 +86,13 @@ impl BlockId {
 
 impl BlockId {
     pub fn solid(self) -> bool {
+        if let Some(sets) = try_tile_sets() {
+            if let Some(v) = sets.solid(self.0) {
+                return v;
+            }
+            // 属性表已装但本 id 未登记：不能猜成实心。
+            return false;
+        }
         if let Some(c) = try_content() {
             if let Some(d) = c.block(self) {
                 return d.solid;
@@ -100,6 +112,12 @@ impl BlockId {
     }
 
     pub fn blocks_motion(self) -> bool {
+        if let Some(sets) = try_tile_sets() {
+            if let Some(v) = sets.solid(self.0) {
+                return v || sets.solid_top(self.0).unwrap_or(false);
+            }
+            return false;
+        }
         if let Some(c) = try_content() {
             if let Some(d) = c.block(self) {
                 return d.blocks_motion;
@@ -148,6 +166,9 @@ impl BlockId {
 
     /// 只挡自上而下的脚，可从下方穿过，也可下穿。
     pub fn is_platform(self) -> bool {
+        if let Some(v) = try_tile_sets().and_then(|s| s.solid_top(self.0)) {
+            return v;
+        }
         if let Some(c) = try_content() {
             if let Some(d) = c.block(self) {
                 return d.is_platform;
@@ -204,6 +225,9 @@ impl BlockId {
 
     /// 放置时是否自带帧。未登记的 id 不是 frame-important。
     pub fn frame_important(self) -> bool {
+        if let Some(sets) = try_tile_sets() {
+            return sets.frame_important(self.0).unwrap_or(false);
+        }
         if let Some(c) = try_content() {
             if let Some(d) = c.block(self) {
                 return d.frame_important;
