@@ -721,6 +721,11 @@ impl TerrariaApp {
                         view.uv,
                         shade(Color::rgb(1.0, 1.0, 1.0), light),
                     );
+                } else if self.tile_atlas.missing_wall_frame(world, tx, ty) {
+                    draw.fill_rect(
+                        Rect::new(sx, sy, tile_px, tile_px),
+                        shade(Color::rgb(1.0, 0.0, 1.0), light),
+                    );
                 } else if let Some(view) = self.tile_atlas.wall(wall) {
                     draw.tex_rect(
                         view.tex,
@@ -828,6 +833,13 @@ impl TerrariaApp {
                         Rect::new(sx, sy, TILE, TILE),
                         uv,
                         shade(Color::rgb(1.0, 1.0, 1.0), light),
+                    );
+                    true
+                } else if self.tile_atlas.missing_block_frame(world, tx, ty) {
+                    // 图集在，帧不在：标成缺失，禁止拿猜测 UV 采样。
+                    draw.fill_rect(
+                        Rect::new(sx, sy, TILE, TILE),
+                        shade(Color::rgb(1.0, 0.0, 1.0), light),
                     );
                     true
                 } else {

@@ -277,18 +277,24 @@ impl TileAtlas {
         Some(TileView { tex, uv })
     }
 
-    /// 按已写入的帧采样 Content 图集。地形没有帧时用图集兜底，不在这里重算邻居。
+    /// 按已写入的帧采样。没有帧时不改用图集上的某一格。
     pub fn block_framed(&self, world: &World, tx: i32, ty: i32) -> Option<TileView> {
         let id = world.get(tx, ty);
         if let Some(meta) = self.sheets.get(&id.0) {
-            let uv = world
-                .frame(tx, ty)
-                .filter(|(fx, fy)| *fx >= 0 && *fy >= 0)
-                .and_then(|(fx, fy)| tile_frame::frame_to_uv(fx as u16, fy as u16, meta.w, meta.h))
-                .unwrap_or(meta.fallback_uv);
+            let (fx, fy) = world.frame(tx, ty)?;
+            if fx < 0 || fy < 0 {
+                return None;
+            }
+            let uv = tile_frame::frame_to_uv(fx as u16, fy as u16, meta.w, meta.h)?;
             return Some(TileView { tex: meta.tex, uv });
         }
         self.block(id)
+    }
+
+    /// 图集已绑定，但这格没有可采样的已写入帧。
+    pub fn missing_block_frame(&self, world: &World, tx: i32, ty: i32) -> bool {
+        let id = world.get(tx, ty);
+        self.sheets.contains_key(&id.0) && self.block_framed(world, tx, ty).is_none()
     }
 
     pub fn wall(&self, id: WallId) -> Option<TileView> {
@@ -302,21 +308,29 @@ impl TileAtlas {
         Some(TileView { tex, uv: FULL_UV })
     }
 
-    /// 按已写入的墙帧采样。没有帧时用图集兜底，不在这里重算邻居。
+    /// 按已写入的墙帧采样。没有帧时不改用图集上的某一格。
     pub fn wall_framed(&self, world: &World, tx: i32, ty: i32) -> Option<TileView> {
         let id = world.get_wall(tx, ty);
         if id == WallId::NONE {
             return None;
         }
         if let Some(meta) = self.wall_sheets.get(&id.0) {
-            let uv = world
-                .wall_frame(tx, ty)
-                .filter(|(fx, fy)| *fx >= 0 && *fy >= 0)
-                .and_then(|(fx, fy)| tile_frame::frame_to_uv(fx as u16, fy as u16, meta.w, meta.h))
-                .unwrap_or(meta.fallback_uv);
+            let (fx, fy) = world.wall_frame(tx, ty)?;
+            if fx < 0 || fy < 0 {
+                return None;
+            }
+            let uv = tile_frame::frame_to_uv(fx as u16, fy as u16, meta.w, meta.h)?;
             return Some(TileView { tex: meta.tex, uv });
         }
         self.wall(id)
+    }
+
+    /// 墙图集已绑定，但这格没有可采样的已写入帧。
+    pub fn missing_wall_frame(&self, world: &World, tx: i32, ty: i32) -> bool {
+        let id = world.get_wall(tx, ty);
+        id != WallId::NONE
+            && self.wall_sheets.contains_key(&id.0)
+            && self.wall_framed(world, tx, ty).is_none()
     }
 
     pub fn halo(&self) -> Option<TileView> {
