@@ -1,6 +1,6 @@
 //! 开发会话快照：方块全表 + 玩家 / 日时（无第三方序列化）。
 //!
-//! 这不是正版 `.wld` / `.plr` 兼容格式，仅供本机构建调试。
+//! 这不是 `.wld` / `.plr` 兼容格式，仅供本机构建调试。
 
 use std::path::PathBuf;
 
@@ -10,9 +10,11 @@ use crate::enemy::Enemy;
 use crate::player::Player;
 use crate::world::World;
 
-/// 开发会话快照魔数。禁止使用暗示正版兼容的名称。
+/// 开发会话快照魔数。禁止使用暗示存档兼容的名称。
+const MAGIC_V2: &str = "TR_DEV_SESSION_V2";
+/// 上一版夹具编号。只读，写入一律用 [`MAGIC_V2`]。
 const MAGIC_V1: &str = "TR_DEV_SESSION_V1";
-/// 旧魔数：仅读档兼容，写入一律用 [`MAGIC_V1`]。
+/// 更旧魔数：仅读档兼容。
 const MAGIC_LEGACY: &str = "TERRARIA_SAVE_V1";
 
 /// 与方块/背包并列的会话元数据。
@@ -45,7 +47,7 @@ pub fn save_session(
 ) -> Result<PathBuf, String> {
     let path = quick_save_path();
     let mut out = String::new();
-    out.push_str(MAGIC_V1);
+    out.push_str(MAGIC_V2);
     out.push('\n');
     out.push_str(&format!("seed={}\n", world.seed));
     out.push_str(&format!(
@@ -127,8 +129,9 @@ pub fn load_session(
     let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let mut lines = text.lines();
     let magic = lines.next().ok_or("空会话快照")?;
-    if magic != MAGIC_V1 && magic != MAGIC_LEGACY {
-        return Err("会话快照版本不匹配（需要 TR_DEV_SESSION_V1）".into());
+    let fixture_ids = magic == MAGIC_V1 || magic == MAGIC_LEGACY;
+    if magic != MAGIC_V2 && !fixture_ids {
+        return Err("会话快照版本不匹配（需要 TR_DEV_SESSION_V2）".into());
     }
     let mut seed = world.seed;
     let mut blocks_raw = None;
@@ -182,7 +185,7 @@ pub fn load_session(
         *world = World::generate(seed);
     }
     let blocks = blocks_raw.ok_or("缺 blocks")?;
-    if !world.decode_blocks(&blocks) {
+    if !world.decode_blocks(&blocks, fixture_ids) {
         return Err("方块表长度不匹配".into());
     }
     if let Some(walls) = walls_raw {

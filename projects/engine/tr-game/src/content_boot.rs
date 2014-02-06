@@ -166,10 +166,13 @@ pub fn boot_content(install: &Path) -> Result<ContentAssets, String> {
     );
     tracing::info!(
         target: "tr.content",
-        "内容图由 ContentModule 注册。配方已接入，物块 vanilla 模块仍待对齐原版 id"
+        "内容图由 ContentModule 注册。物块使用公开类型 id，配方走同一注册表"
     );
-    tr_core::boot_content_modules(&[&crate::content_recipes::BootstrapRecipes])
-        .expect("内容图启动");
+    tr_core::boot_content_modules(&[
+        &crate::content_tiles::VanillaTiles,
+        &crate::content_recipes::BootstrapRecipes,
+    ])
+    .expect("内容图启动");
     let mut assets = ContentAssets::empty();
     assets.install_root = Some(install.to_path_buf());
     assets.boot_frames = proof;

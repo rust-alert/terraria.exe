@@ -48,42 +48,78 @@ use spark_core::{ErrorArg, ErrorArgs};
 pub struct BlockId(pub u32);
 
 impl BlockId {
-    pub const AIR: Self = Self(0);
-    pub const DIRT: Self = Self(1);
+    /// 格子未激活。不是物块类型。正版类型 0 是泥土。
+    pub const AIR: Self = Self(u32::MAX);
+    /// 泥土。正版 `TileID.Dirt` = 0。
+    pub const DIRT: Self = Self(0);
+    /// 石头。正版 `TileID.Stone` = 1。
+    pub const STONE: Self = Self(1);
+    /// 草。正版 `TileID.Grass` = 2。
     pub const GRASS: Self = Self(2);
-    pub const STONE: Self = Self(3);
-    pub const WOOD: Self = Self(6);
-    pub const LEAF: Self = Self(7);
-    pub const WORKBENCH: Self = Self(8);
-    pub const SAPLING: Self = Self(9);
-    /// 火把（可穿行，夜间照明）。
-    pub const TORCH: Self = Self(11);
-    /// 木平台（可站立，便于架空建造）。
-    pub const PLATFORM: Self = Self(12);
-    /// 木箱（可存放物品）。
-    pub const CHEST: Self = Self(13);
-    /// 木梯（可穿行，可攀爬）。
-    pub const LADDER: Self = Self(14);
-    /// 沙（荒原地表）。
-    pub const SAND: Self = Self(15);
-    /// 雪（寒地地表）。
-    pub const SNOW: Self = Self(16);
-    /// 铜矿。
-    pub const COPPER_ORE: Self = Self(17);
-    /// 铁矿。
-    pub const IRON_ORE: Self = Self(18);
-    /// 熔炉。
-    pub const FURNACE: Self = Self(19);
-    /// 床（家园重生点）。
-    pub const BED: Self = Self(20);
-    /// 水（过渡占位；液量语义未经验证，见 `FluidLevel`）。
-    pub const WATER: Self = Self(21);
-    /// 绳索（可穿行，可攀爬，便于竖井）。
-    pub const ROPE: Self = Self(22);
-    /// 自然树。编号对齐正版 `TileID.Trees`（5），不是自造夹具 id。
+    /// 火把。正版 `TileID.Torches` = 4。
+    pub const TORCH: Self = Self(4);
+    /// 自然树。正版 `TileID.Trees` = 5。
     pub const TREES: Self = Self(5);
     /// [`Self::TREES`] 的别名。
     pub const TREE: Self = Self::TREES;
+    /// 铁矿。正版 `TileID.Iron` = 6。
+    pub const IRON_ORE: Self = Self(6);
+    /// 铜矿。正版 `TileID.Copper` = 7。
+    pub const COPPER_ORE: Self = Self(7);
+    /// 熔炉。正版 `TileID.Furnaces` = 17。
+    pub const FURNACE: Self = Self(17);
+    /// 工作台。正版 `TileID.WorkBenches` = 18。
+    pub const WORKBENCH: Self = Self(18);
+    /// 平台。正版 `TileID.Platforms` = 19。
+    pub const PLATFORM: Self = Self(19);
+    /// 树苗。正版 `TileID.Saplings` = 20。
+    pub const SAPLING: Self = Self(20);
+    /// 箱子。正版 `TileID.Containers` = 21。
+    pub const CHEST: Self = Self(21);
+    /// 木块。正版 `TileID.WoodBlock` = 30。
+    pub const WOOD: Self = Self(30);
+    /// 沙。正版 `TileID.Sand` = 53。
+    pub const SAND: Self = Self(53);
+    /// 床。正版 `TileID.Beds` = 79。
+    pub const BED: Self = Self(79);
+    /// 雪块。正版 `TileID.SnowBlock` = 147。
+    pub const SNOW: Self = Self(147);
+    /// 叶块。正版 `TileID.LeafBlock` = 192。当前生成不再铺假树冠。
+    pub const LEAF: Self = Self(192);
+    /// 绳索。正版 `TileID.Rope` = 213。
+    pub const ROPE: Self = Self(213);
+    /// 液体占格。不是物块类型。液量以后写在 `Tile` 上。
+    pub const WATER: Self = Self(u32::MAX - 1);
+    /// 木梯。正版没有对应 Tile。临时用本重写本地编号，不占用 0..=693 正版空间。
+    pub const LADDER: Self = Self(1000);
+
+    /// 旧开发快照里的夹具编号迁到当前身份。新世界不要再写这些旧号。
+    pub fn from_fixture_id(v: u32) -> Self {
+        match v {
+            0 => Self::AIR,
+            1 => Self::DIRT,
+            2 => Self::GRASS,
+            3 => Self::STONE,
+            5 | 23 => Self::TREES,
+            6 => Self::WOOD,
+            7 => Self::LEAF,
+            8 => Self::WORKBENCH,
+            9 => Self::SAPLING,
+            11 => Self::TORCH,
+            12 => Self::PLATFORM,
+            13 => Self::CHEST,
+            14 => Self::LADDER,
+            15 => Self::SAND,
+            16 => Self::SNOW,
+            17 => Self::COPPER_ORE,
+            18 => Self::IRON_ORE,
+            19 => Self::FURNACE,
+            20 => Self::BED,
+            21 => Self::WATER,
+            22 => Self::ROPE,
+            other => Self(other),
+        }
+    }
 }
 
 impl BlockId {

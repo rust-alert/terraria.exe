@@ -4,7 +4,6 @@
 //! 有限边界（不回环）。逻辑格固定 16 像素。屏幕 2× 只走 [`DISPLAY_SCALE`]，不写进 `TILE`。
 
 use std::collections::HashMap;
-use std::f32::consts::TAU;
 use tr_core::{BiomeId, BlockId, FluidLevel, ItemId, WallId, biome_at};
 
 /// 约小世界规模宽度的 1/10，兼顾可玩宽度与生成耗时。
@@ -106,17 +105,25 @@ pub struct World {
     frames: HashMap<(i32, i32), (i16, i16)>,
     /// 背景墙帧。与前景帧分开，同一格可以同时有墙和方块。
     wall_frames: HashMap<(i32, i32), (i16, i16)>,
+    /// 世界属性级地表基准。
+    pub surface_level: i32,
+    /// 世界属性级岩石层基准。
+    pub rock_level: i32,
+    /// 熔岩线（深层液体分界）。
+    pub lava_line: i32,
+    /// 每列地表 Y（生成剖面；读档后可按列扫描回填）。
+    surface_y: Vec<i32>,
+    /// 每列岩石层 Y。
+    pub(crate) rock_y: Vec<i32>,
 }
 
 impl World {
     pub fn generate(seed: u64) -> Self {
         let n = (WORLD_W * WORLD_H) as usize;
-        let mut blocks = vec![BlockId::AIR; n];
-        let mut walls = vec![WallId::NONE; n];
         let mut w = Self {
             seed,
-            blocks: Vec::new(),
-            walls: Vec::new(),
+            blocks: vec![BlockId::AIR; n],
+            walls: vec![WallId::NONE; n],
             fluid: vec![FluidLevel::SOURCE; n],
             damage_hp: HashMap::new(),
             wall_hp: HashMap::new(),
@@ -125,81 +132,28 @@ impl World {
             drops: Vec::new(),
             frames: HashMap::new(),
             wall_frames: HashMap::new(),
+            surface_level: WORLD_H / 4,
+            rock_level: WORLD_H / 2,
+            lava_line: (WORLD_H as f32 * 0.8) as i32,
+            surface_y: vec![WORLD_H / 4; WORLD_W as usize],
+            rock_y: vec![WORLD_H / 2; WORLD_W as usize],
         };
-        for x in 0..WORLD_W {
-            let h = surface_height(seed, x);
-            let biome = biome_at(seed, x);
-            for y in 0..WORLD_H {
-                let idx = (y * WORLD_W + x) as usize;
-                let id = if y < h {
-                    BlockId::AIR
-                } else if y == h {
-                    match biome {
-                        BiomeId::Desert => BlockId::SAND,
-                        BiomeId::Tundra => BlockId::SNOW,
-                        BiomeId::Meadow | BiomeId::Forest => BlockId::GRASS,
-                    }
-                } else if y < h + 5 {
-                    match biome {
-                        BiomeId::Desert => {
-                            if y < h + 3 {
-                                BlockId::SAND
-                            } else {
-                                BlockId::DIRT
-                            }
-                        }
-                        BiomeId::Tundra => {
-                            if y < h + 2 {
-                                BlockId::SNOW
-                            } else {
-                                BlockId::DIRT
-                            }
-                        }
-                        _ => BlockId::DIRT,
-                    }
-                } else {
-                    // 深层默认石头；铁矿稀疏出现。
-                    let depth = y - h;
-                    let roll = hash2(seed, x, y);
-                    if depth >= 14 && roll % 67 == 0 {
-                        BlockId::IRON_ORE
-                    } else {
-                        BlockId::STONE
-                    }
-                };
-                blocks[idx] = id;
-                // 地表以下铺背景墙（挖穿后仍见岩壁）
-                if y > h {
-                    walls[idx] = if y < h + 5 {
-                        WallId::DIRT
-                    } else {
-                        WallId::STONE
-                    };
-                } else if y == h {
-                    walls[idx] = WallId::DIRT;
-                }
-            }
-        }
-        w.blocks = blocks;
-        w.walls = walls;
 
-        let spawn_x = SPAWN_TX;
-
-        w.plant_trees();
-        w.carve_and_fill_lakes();
-        // 不再烘焙 `0..=8` 流动：湖泊保持源水静置，待后续液量模型替换。
-        w.carve_shallow_caves();
-        w.place_copper_veins();
+        let profile = crate::worldgen::generate_into(&mut w, seed);
+        w.surface_level = profile.surface_level;
+        w.rock_level = profile.rock_level;
+        w.lava_line = profile.lava_line;
+        w.surface_y = profile.surface_y;
+        w.rock_y = profile.rock_y;
 
         // 出生点旁火把与补给箱
-        let (sx, _) = w.spawn_pos();
-        let stx = wrap_tx((sx / TILE).floor() as i32 + 2);
-        let sty = surface_height(seed, stx) - 2;
+        let stx = wrap_tx(SPAWN_TX + 2);
+        let sty = w.surface_at(stx) - 2;
         if w.get(stx, sty) == BlockId::AIR {
             w.set(stx, sty, BlockId::TORCH);
         }
         let ctx = wrap_tx(stx + 2);
-        let cty = surface_height(seed, ctx) - 1;
+        let cty = w.surface_at(ctx) - 1;
         if w.get(ctx, cty) == BlockId::AIR {
             w.set(ctx, cty, BlockId::CHEST);
             if let Some(chest) = w.chest_at(ctx, cty) {
@@ -209,7 +163,6 @@ impl World {
                 chest.insert(ItemId::LADDER, 8);
             }
         }
-        let _ = spawn_x;
 
         crate::trees::stamp_frames(&mut w);
         crate::tile_frame::stamp_terrain_all(&mut w);
@@ -217,120 +170,47 @@ impl World {
         w
     }
 
-    /// 地表种树：只写不挡移动的 `TREE` 树干。树冠由绘制层用 `Tree_Tops` 画，不占假叶格。
-    fn plant_trees(&mut self) {
-        let mut x = 8;
-        while x < WORLD_W - 4 {
-            let wx = wrap_tx(x);
-            let near_spawn = (wx - SPAWN_TX).abs() < 10;
-            let h = surface_height(self.seed, wx);
-            let biome = biome_at(self.seed, wx);
-            let plantable = matches!(
-                self.get(wx, h),
-                BlockId::GRASS | BlockId::SNOW | BlockId::DIRT
-            );
-            let roll = hash2(self.seed, wx, 91) % 100;
-            if !near_spawn && plantable && roll < biome.tree_chance() as u64 {
-                let trunk = 4 + (hash2(self.seed, wx, 7) % 4) as i32;
-                self.grow_tree_at(wx, h, trunk);
-                x += 5 + (hash2(self.seed, wx, 13) % 4) as i32;
-            } else {
-                x += 2;
-            }
+    /// 生成期写格：不触发邻接 framing（整图结束后统一盖章）。
+    pub(crate) fn set_raw(&mut self, x: i32, y: i32, id: BlockId) {
+        if !self.in_bounds(x, y) {
+            return;
+        }
+        let idx = (y * WORLD_W + x) as usize;
+        self.blocks[idx] = id;
+        self.damage_hp.remove(&(x, y));
+        self.frames.remove(&(x, y));
+        if id != BlockId::WATER {
+            // 非水格清掉液量占位。
+        }
+        if id == BlockId::AIR {
+            self.fluid[idx] = FluidLevel::SOURCE;
         }
     }
 
-    /// 在地表挖浅湖并灌满源水（避开出生点）。
-    fn carve_and_fill_lakes(&mut self) {
-        let centers = [
-            wrap_tx(SPAWN_TX + 70),
-            wrap_tx(SPAWN_TX + 150),
-            wrap_tx(SPAWN_TX - 90),
-        ];
-        for (i, &cx) in centers.iter().enumerate() {
-            let half_w = 6 + (hash2(self.seed, cx, 401 + i as i32) % 4) as i32;
-            let depth = 3 + (hash2(self.seed, cx, 503 + i as i32) % 3) as i32;
-            let sh = surface_height(self.seed, cx);
-            let water_y = sh; // 水面约在原地表
-            // 挖盆：向下加深，两侧抬高岸线
-            for dx in -half_w..=half_w {
-                let x = wrap_tx(cx + dx);
-                let t = dx.abs() as f32 / half_w as f32;
-                let dig = ((1.0 - t * t) * depth as f32).round() as i32;
-                if dig <= 0 {
-                    continue;
-                }
-                let basin_bottom = water_y + dig;
-                for y in (water_y - 1)..=basin_bottom {
-                    if !self.y_in_bounds(y) {
-                        continue;
-                    }
-                    let id = self.get(x, y);
-                    if id == BlockId::CHEST {
-                        continue;
-                    }
-                    if y < water_y {
-                        // 湖面上空清障
-                        if !id.solid()
-                            || matches!(
-                                id,
-                                BlockId::LEAF | BlockId::SAPLING | BlockId::WOOD | BlockId::TREE
-                            )
-                        {
-                            self.set(x, y, BlockId::AIR);
-                        }
-                    } else {
-                        self.set(x, y, BlockId::AIR);
-                    }
-                }
-                // 湖底铺沙/泥
-                if self.y_in_bounds(basin_bottom) {
-                    let bed = match biome_at(self.seed, x) {
-                        BiomeId::Desert => BlockId::SAND,
-                        BiomeId::Tundra => BlockId::STONE,
-                        _ => BlockId::DIRT,
-                    };
-                    self.set(x, basin_bottom, bed);
-                    if self.get_wall(x, basin_bottom) == WallId::NONE {
-                        self.set_wall(x, basin_bottom, WallId::DIRT);
-                    }
-                }
-                // 灌源水：水面以下、湖底以上
-                for y in water_y..basin_bottom {
-                    if !self.y_in_bounds(y) {
-                        continue;
-                    }
-                    if self.get(x, y) == BlockId::AIR {
-                        self.set_water(x, y, FluidLevel::SOURCE);
-                    }
-                }
-            }
-            // 岸边一侧挖浅溢流槽，方便烘焙出流动水位
-            let spill_dir = if hash2(self.seed, cx, 607) % 2 == 0 {
-                1
-            } else {
-                -1
-            };
-            let sx = wrap_tx(cx + spill_dir * (half_w + 1));
-            let sy = surface_height(self.seed, sx);
-            for step in 0..5 {
-                let x = wrap_tx(sx + spill_dir * step);
-                let y = sy + step.min(2);
-                if !self.y_in_bounds(y) {
-                    break;
-                }
-                let id = self.get(x, y);
-                if id.solid() {
-                    self.set(x, y, BlockId::AIR);
-                }
-                let below = y + 1;
-                if self.y_in_bounds(below) && self.get(x, below) == BlockId::AIR {
-                    // 留空给下落水
-                } else if self.y_in_bounds(below) && !self.get(x, below).solid() {
-                    // keep
-                }
-            }
+    /// 生成期写墙：不触发墙 framing。
+    pub(crate) fn set_wall_raw(&mut self, x: i32, y: i32, id: WallId) {
+        if !self.in_bounds(x, y) {
+            return;
         }
+        self.walls[(y * WORLD_W + x) as usize] = id;
+        self.wall_hp.remove(&(x, y));
+        self.wall_frames.remove(&(x, y));
+    }
+
+    /// 生成期写液量。
+    pub(crate) fn set_fluid(&mut self, x: i32, y: i32, level: FluidLevel) {
+        if !self.in_bounds(x, y) {
+            return;
+        }
+        self.fluid[(y * WORLD_W + x) as usize] = level.clamp_valid();
+    }
+
+    /// 生成期清液量。
+    pub(crate) fn clear_fluid(&mut self, x: i32, y: i32) {
+        if !self.in_bounds(x, y) {
+            return;
+        }
+        self.fluid[(y * WORLD_W + x) as usize] = FluidLevel::SOURCE;
     }
 
     /// 一次性按过渡期水位规则烘焙流动/下落。
@@ -341,111 +221,6 @@ impl World {
         for _ in 0..48 {
             if !self.tick_fluids_once() {
                 break;
-            }
-        }
-    }
-
-    /// 浅层洞穴：水平虫洞，避开出生点正下方。
-    fn carve_shallow_caves(&mut self) {
-        for i in 0..18i32 {
-            let mut x = wrap_tx((hash2(self.seed, i, 910) % WORLD_W as u64) as i32);
-            let dist = (x - SPAWN_TX).abs();
-            if dist < 22 {
-                continue;
-            }
-            let sh = surface_height(self.seed, x);
-            let mut y = (sh + 7 + (hash2(self.seed, i, 911) % 5) as i32).min(WORLD_H - 4);
-            let steps = 16 + (hash2(self.seed, i, 912) % 12) as i32;
-            let mut dir = if hash2(self.seed, i, 913) % 2 == 0 {
-                1
-            } else {
-                -1
-            };
-            for s in 0..steps {
-                self.carve_cave_cell(x, y);
-                self.carve_cave_cell(x, (y + 1).min(WORLD_H - 2));
-                let roll = hash2(self.seed, x, y + s);
-                if roll % 5 == 0 {
-                    y += 1;
-                } else if roll % 5 == 1 {
-                    y -= 1;
-                }
-                if roll % 9 == 0 {
-                    dir = -dir;
-                }
-                let sh_here = surface_height(self.seed, x);
-                y = y.clamp(sh_here + 6, (sh_here + 20).min(WORLD_H - 3));
-                x = wrap_tx(x + dir);
-            }
-        }
-    }
-
-    fn carve_cave_cell(&mut self, x: i32, y: i32) {
-        if !self.y_in_bounds(y) {
-            return;
-        }
-        let id = self.get(x, y);
-        if !matches!(
-            id,
-            BlockId::STONE | BlockId::DIRT | BlockId::IRON_ORE | BlockId::SAND
-        ) {
-            return;
-        }
-        self.set(x, y, BlockId::AIR);
-        if self.get_wall(x, y) == WallId::NONE {
-            self.set_wall(x, y, WallId::STONE);
-        }
-    }
-
-    /// 在洞穴壁旁铺一小簇铜矿，而不是全图散点。
-    fn place_copper_veins(&mut self) {
-        let mut placed = 0u32;
-        for y in 10..WORLD_H - 2 {
-            for x in 0..WORLD_W {
-                if placed >= 16 {
-                    return;
-                }
-                if self.get(x, y) != BlockId::AIR {
-                    continue;
-                }
-                let sh = surface_height(self.seed, x);
-                let depth = y - sh;
-                if !(6..=22).contains(&depth) {
-                    continue;
-                }
-                if hash2(self.seed, x, y) % 19 != 0 {
-                    continue;
-                }
-                let neighbors = [(1, 0), (-1, 0), (0, 1), (0, -1)];
-                for (dx, dy) in neighbors {
-                    let nx = wrap_tx(x + dx);
-                    let ny = y + dy;
-                    if self.get(nx, ny) != BlockId::STONE {
-                        continue;
-                    }
-                    self.paint_copper_blob(nx, ny);
-                    placed += 1;
-                    break;
-                }
-            }
-        }
-    }
-
-    fn paint_copper_blob(&mut self, cx: i32, cy: i32) {
-        for dy in -1..=1 {
-            for dx in -2..=2 {
-                if dx == 0 && dy == 0 {
-                    self.set(cx, cy, BlockId::COPPER_ORE);
-                    continue;
-                }
-                if hash2(self.seed, cx + dx, cy + dy) % 3 == 0 {
-                    continue;
-                }
-                let x = wrap_tx(cx + dx);
-                let y = cy + dy;
-                if self.get(x, y) == BlockId::STONE {
-                    self.set(x, y, BlockId::COPPER_ORE);
-                }
             }
         }
     }
@@ -646,15 +421,17 @@ impl World {
         for i in 1..=trunk {
             let y = surface_y - i;
             if !self.y_in_bounds(y) {
-                continue;
+                break;
             }
             let cur = self.get(tx, y);
-            if matches!(
+            // 遇到实心格就停。不能跳过雪层再往上种，否则会在洞穴里留下没有土壤的树干。
+            if !matches!(
                 cur,
                 BlockId::AIR | BlockId::LEAF | BlockId::SAPLING | BlockId::TREE
             ) {
-                self.set(tx, y, BlockId::TREE);
+                break;
             }
+            self.set(tx, y, BlockId::TREE);
         }
         crate::trees::stamp_column(self, tx);
     }
@@ -733,7 +510,7 @@ impl World {
         let sample = ((self.seed ^ (dt.to_bits() as u64)) % WORLD_W as u64) as i32;
         for k in 0..6 {
             let x = wrap_tx(sample + k * 17);
-            let h = surface_height(self.seed, x);
+            let h = self.surface_at(x);
             if self.get(x, h) != BlockId::DIRT {
                 continue;
             }
@@ -1151,12 +928,58 @@ impl World {
     }
 
     pub fn surface_at(&self, x: i32) -> i32 {
-        surface_height(self.seed, wrap_tx(x))
+        let x = wrap_tx(x);
+        if let Some(&y) = self.surface_y.get(x as usize) {
+            return y;
+        }
+        // 旧存档无剖面时按列扫描首块实心。
+        for y in 0..WORLD_H {
+            if self.get(x, y).solid() {
+                return y;
+            }
+        }
+        self.surface_level
+    }
+
+    /// 按当前方块表重建每列地表剖面（读档后调用）。
+    pub fn rebuild_surface_profile(&mut self) {
+        if self.surface_y.len() != WORLD_W as usize {
+            self.surface_y = vec![self.surface_level; WORLD_W as usize];
+        }
+        if self.rock_y.len() != WORLD_W as usize {
+            self.rock_y = vec![self.rock_level; WORLD_W as usize];
+        }
+        let mut sum_s = 0i64;
+        let mut sum_r = 0i64;
+        for x in 0..WORLD_W {
+            let mut sy = self.surface_level;
+            for y in 0..WORLD_H {
+                if self.get(x, y).solid() {
+                    sy = y;
+                    break;
+                }
+            }
+            self.surface_y[x as usize] = sy;
+            // 岩石层：地表以下首块石头或深度兜底。
+            let mut ry = (sy + ((WORLD_H - sy) * 2) / 5).min(WORLD_H - 1);
+            for y in sy..WORLD_H {
+                if self.get(x, y) == BlockId::STONE {
+                    ry = y;
+                    break;
+                }
+            }
+            self.rock_y[x as usize] = ry.max(sy + 2);
+            sum_s += sy as i64;
+            sum_r += self.rock_y[x as usize] as i64;
+        }
+        self.surface_level = (sum_s / WORLD_W as i64) as i32;
+        self.rock_level = (sum_r / WORLD_W as i64) as i32;
+        self.lava_line = ((WORLD_H as f32 * 0.8) as i32).min(WORLD_H - 8);
     }
 
     pub fn spawn_pos(&self) -> (f32, f32) {
         let tx = SPAWN_TX;
-        let sh = surface_height(self.seed, tx);
+        let sh = self.surface_at(tx);
         let feet_y = sh as f32 * TILE;
         let x = tx as f32 * TILE + (TILE - PLAYER_HIT_W) * 0.5;
         (x, feet_y - PLAYER_HIT_H)
@@ -1233,7 +1056,9 @@ impl World {
     }
 
     /// 从存档恢复方块表。
-    pub fn decode_blocks(&mut self, raw: &str) -> bool {
+    ///
+    /// `fixture_ids` 为真时按旧夹具编号迁移；否则数值已是当前身份。
+    pub fn decode_blocks(&mut self, raw: &str, fixture_ids: bool) -> bool {
         let expect = (WORLD_W * WORLD_H) as usize;
         let vals: Vec<u32> = raw
             .split(',')
@@ -1247,9 +1072,11 @@ impl World {
             self.fluid = vec![FluidLevel::SOURCE; expect];
         }
         for (i, v) in vals.into_iter().enumerate() {
-            // 旧会话曾把树写成自造 id 23；迁到正版 Trees = 5。
-            let id = if v == 23 { BlockId::TREES } else { BlockId(v) };
-            self.blocks[i] = id;
+            self.blocks[i] = if fixture_ids {
+                BlockId::from_fixture_id(v)
+            } else {
+                BlockId(v)
+            };
             if self.blocks[i] != BlockId::WATER {
                 self.fluid[i] = FluidLevel::SOURCE;
             }
@@ -1257,6 +1084,7 @@ impl World {
         self.damage_hp.clear();
         self.grow_t.clear();
         self.drops.clear();
+        self.rebuild_surface_profile();
         self.promote_living_trees();
         self.frames.clear();
         crate::trees::stamp_frames(self);
@@ -1351,18 +1179,7 @@ impl World {
     }
 }
 
-/// 有限边界地表高度：按列噪声，不再绕圆柱。
-fn surface_height(seed: u64, x: i32) -> i32 {
-    let x = wrap_tx(x);
-    let t = x as f32 / WORLD_W as f32;
-    let phase = (seed as f32 * 0.001).sin();
-    let n1 = ((t * TAU * 3.0 + phase).sin() * 6.0) as i32;
-    let n2 = ((t * TAU * 1.2 + phase * 0.5).cos() * 3.0) as i32;
-    let n3 = ((t * TAU * 7.0 + phase * 1.3).sin() * 2.0) as i32;
-    let base = WORLD_H / 3 + 10;
-    (base + n1 + n2 + n3).clamp(18, WORLD_H - 24)
-}
-
+/// 有限边界哈希（生长 / 草皮抽样用）。
 fn hash2(seed: u64, x: i32, y: i32) -> u64 {
     let x = x.clamp(0, WORLD_W) as u64;
     let mut v =
@@ -1408,7 +1225,13 @@ mod tests {
         assert_eq!(BlockId::TREE.drop_item(), Some(ItemId::WOOD));
         assert!(BlockId::WOOD.blocks_motion());
         assert_eq!(BlockId::TREES.0, 5, "须对齐正版 TileID.Trees");
+        assert_eq!(BlockId::DIRT.0, 0, "须对齐正版 TileID.Dirt");
+        assert_eq!(BlockId::WOOD.0, 30, "须对齐正版 TileID.WoodBlock");
+        assert_eq!(BlockId::AIR.0, u32::MAX, "空气不是类型 0");
         assert!(BlockId::TREES.is_tree());
+        assert_eq!(BlockId::from_fixture_id(1), BlockId::DIRT);
+        assert_eq!(BlockId::from_fixture_id(0), BlockId::AIR);
+        assert_eq!(BlockId::from_fixture_id(6), BlockId::WOOD);
     }
 
     #[test]
@@ -1442,6 +1265,68 @@ mod tests {
         world.set(4, WORLD_H - 3, BlockId::WOOD);
         world.promote_living_trees();
         assert_eq!(world.get(4, WORLD_H - 3), BlockId::WOOD);
+    }
+
+    #[test]
+    fn layered_terrain_has_dirt_over_stone_and_caves() {
+        let world = World::generate(42);
+        assert!(world.surface_level > 8);
+        assert!(world.rock_level > world.surface_level + 4);
+        assert!(world.lava_line > world.rock_level);
+
+        let mut dirt = 0u32;
+        let mut stone = 0u32;
+        let mut air_below = 0u32;
+        let mut copper = 0u32;
+        let mut iron = 0u32;
+        let mut sand = 0u32;
+        for x in 0..WORLD_W {
+            let sy = world.surface_at(x);
+            let ry = world.rock_y[x as usize];
+            assert!(ry > sy, "列 {x}: rock {ry} 应低于 surface {sy}");
+            for y in sy..ry.min(sy + 8) {
+                let id = world.get(x, y);
+                if id == BlockId::DIRT || id == BlockId::GRASS {
+                    dirt += 1;
+                }
+            }
+            for y in ry..world.lava_line.min(ry + 20) {
+                match world.get(x, y) {
+                    BlockId::STONE => stone += 1,
+                    BlockId::AIR | BlockId::WATER => air_below += 1,
+                    BlockId::COPPER_ORE => copper += 1,
+                    BlockId::IRON_ORE => iron += 1,
+                    BlockId::SAND => sand += 1,
+                    _ => {}
+                }
+            }
+        }
+        assert!(dirt > 100, "表层应有泥土/草: {dirt}");
+        assert!(stone > 200, "岩石层应有石头: {stone}");
+        assert!(air_below > 20, "地下应有洞穴空气: {air_below}");
+        assert!(copper + iron > 5, "应有铜/铁矿脉: cu={copper} fe={iron}");
+        assert!(sand > 0, "沙漠或海底应有沙: {sand}");
+        let mut ocean = 0u32;
+        let shore = (WORLD_W as f64 * 0.12) as i32;
+        for x in 1..shore {
+            for y in 0..WORLD_H {
+                if world.get(x, y) == BlockId::WATER {
+                    ocean += 1;
+                }
+            }
+        }
+        assert!(ocean > 10, "左侧海洋应有水: {ocean}");
+        let mut wide = 0u32;
+        for x in 1..WORLD_W - 1 {
+            for y in world.rock_level..world.lava_line {
+                if world.get(x, y) == BlockId::AIR
+                    && (world.get(x - 1, y) == BlockId::AIR || world.get(x + 1, y) == BlockId::AIR)
+                {
+                    wide += 1;
+                }
+            }
+        }
+        assert!(wide > 5, "洞穴应横向展开: {wide}");
     }
 
     #[test]
