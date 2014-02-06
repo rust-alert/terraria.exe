@@ -162,13 +162,14 @@ pub fn boot_content(install: &Path) -> Result<ContentAssets, String> {
         target: "tr.content",
         path = %install.display(),
         status = status.as_str(),
-        "原版 mod 包未提供。贴图索引与 mod 状态无关"
+        "mod 包未提供。贴图索引与模组状态无关"
     );
-    tracing::warn!(
+    tracing::info!(
         target: "tr.content",
-        "内置方块表只提供玩法夹具。泥土画面取 Tiles_0 第一格，不用夹具 ID 去打开 Tiles_N.xnb"
+        "内容图由 ContentModule 注册。配方已接入，物块 vanilla 模块仍待对齐原版 id"
     );
-    tr_core::install_builtin_fixture();
+    tr_core::boot_content_modules(&[&crate::content_recipes::BootstrapRecipes])
+        .expect("内容图启动");
     let mut assets = ContentAssets::empty();
     assets.install_root = Some(install.to_path_buf());
     assets.boot_frames = proof;

@@ -1,11 +1,11 @@
-//! HUD：原版式左上快捷栏、右上生命心 / 魔力星、迷你地图条与面板。
+//! HUD：左上快捷栏、右上生命心 / 魔力星、迷你地图条与面板。
 
 use spark_core::{Color, Rect, Vec2};
 use spark_renderer::DrawList;
 use spark_widget::{label, panel};
 use tr_core::ItemId;
 
-use crate::craft::{CraftStation, RECIPES};
+use crate::craft::{CraftStation, recipes};
 use crate::world::{TILE, WORLD_H, WORLD_W, wrap_tx};
 
 use crate::app::TerrariaApp;
@@ -23,7 +23,7 @@ pub(crate) enum HudPointer {
     BagSlot(usize),
     /// 木箱列表行。
     ChestRow(usize),
-    /// 背包内徒手配方行 → `RECIPES` 下标。
+    /// 背包内徒手配方行 → 配方表下标。
     BagCraft(usize),
     CraftRow(usize),
     /// 商人商店货架行 → `MERCHANT_OFFERS` 下标。
@@ -88,7 +88,7 @@ fn hotbar_geom(screen_w: f32, _screen_h: f32) -> (f32, f32, f32, f32, usize) {
     let gap = 4.0;
     let n = HOTBAR_SLOTS;
     let _ = screen_w;
-    // 原版快捷栏在左上。
+    // 快捷栏在左上。
     let base_x = 20.0;
     let base_y = 20.0;
     (base_x, base_y, slot, gap, n)
@@ -117,7 +117,7 @@ fn bag_rows(slot_count: usize) -> usize {
 }
 
 fn hand_recipe_indices() -> Vec<usize> {
-    RECIPES
+    recipes()
         .iter()
         .enumerate()
         .filter(|(_, r)| r.station == CraftStation::Hand)
@@ -237,10 +237,10 @@ impl TerrariaApp {
             }
         }
         if self.craft_open {
-            let panel = craft_panel_rect(self.screen_w, RECIPES.len());
+            let panel = craft_panel_rect(self.screen_w, recipes().len());
             if panel.contains(p) {
                 let panel_y = 80.0;
-                for i in 0..RECIPES.len().min(12) {
+                for i in 0..recipes().len().min(12) {
                     let y = panel_y + 52.0 + i as f32 * 36.0;
                     if Rect::new(panel.x + 16.0, y, 368.0, 32.0).contains(p) {
                         return HudPointer::CraftRow(i);
@@ -570,7 +570,7 @@ impl TerrariaApp {
     }
 
     fn paint_vitals(&self, draw: &mut DrawList, player: &crate::player::Player) {
-        // 原版式：右上生命心 + 右侧魔力星（约 20 HP / 心，20 MP / 星）。
+        // 右上生命心 + 右侧魔力星（约 20 HP / 心，20 MP / 星）。
         let heart_n = ((player.max_hp / 20.0).ceil() as i32).clamp(1, 20);
         let filled = (player.hp / 20.0).clamp(0.0, heart_n as f32);
         let star_n = ((player.max_mp / 20.0).ceil() as i32).clamp(0, 20);
@@ -866,7 +866,7 @@ impl TerrariaApp {
         let at_fu = matches!(station_now, CraftStation::Furnace);
         let panel_x = self.screen_w * 0.5 - 200.0;
         let panel_y = 80.0;
-        let visible = RECIPES.len().min(12);
+        let visible = recipes().len().min(12);
         panel(
             draw,
             Rect::new(panel_x, panel_y, 400.0, 56.0 + visible as f32 * 36.0 + 28.0),
@@ -884,7 +884,7 @@ impl TerrariaApp {
                 CraftStation::Hand => "制作 · 徒手（靠近台/炉解锁）",
             },
         );
-        for (i, recipe) in RECIPES.iter().enumerate() {
+        for (i, recipe) in recipes().iter().enumerate() {
             let y = panel_y + 52.0 + i as f32 * 36.0;
             if y > self.screen_h - 80.0 {
                 break;
@@ -894,7 +894,7 @@ impl TerrariaApp {
                 CraftStation::Workbench => !at_wb,
                 CraftStation::Furnace => !at_fu,
             };
-            let can = !locked && player.inv.can_pay(recipe.inputs);
+            let can = !locked && player.inv.can_pay(&recipe.inputs);
             let bg = if can {
                 Color::rgb(0.14, 0.28, 0.22)
             } else if locked {
@@ -1084,9 +1084,9 @@ impl TerrariaApp {
         };
         label(draw, box_r.x + 20.0, craft_y0, 13.0, ACCENT, "徒手制作");
         for (row, &ri) in hand_recipe_indices().iter().enumerate() {
-            let recipe = &RECIPES[ri];
+            let recipe = &recipes()[ri];
             let r = bag_craft_row_rect(self.screen_w, bag_n, row);
-            let can = player.inv.can_pay(recipe.inputs);
+            let can = player.inv.can_pay(&recipe.inputs);
             draw.fill_rect(
                 r,
                 if can {

@@ -194,6 +194,7 @@ pub struct ItemDef {
 pub struct ContentRegistry {
     blocks: Vec<Option<BlockDef>>,
     items: Vec<Option<ItemDef>>,
+    pub(crate) recipes: Vec<crate::RecipeDef>,
     block_keys: HashMap<String, BlockId>,
     item_keys: HashMap<String, ItemId>,
     palette: Vec<ItemId>,
@@ -406,7 +407,7 @@ impl ContentRegistry {
         Ok(())
     }
 
-    fn ensure_writable(&self) -> Result<(), String> {
+    pub(crate) fn ensure_writable(&self) -> Result<(), String> {
         if self.sealed {
             Err("内容表已冻结，无法再注册".into())
         } else {

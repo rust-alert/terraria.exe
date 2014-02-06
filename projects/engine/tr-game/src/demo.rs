@@ -144,9 +144,9 @@ impl TerrariaApp {
             }
             player.inv.add(ItemId::WOOD, 2);
             player.inv.add(ItemId::GEL, 2);
-            let torch_idx = crate::craft::RECIPES
+            let torch_idx = crate::craft::recipes()
                 .iter()
-                .position(|r| r.id == "torch")
+                .position(|r| r.key == "terraria:torch")
                 .unwrap_or(5);
             if let Some(msg) = player.try_craft(world, torch_idx) {
                 tracing::info!(msg, "demo torch");
@@ -165,9 +165,9 @@ impl TerrariaApp {
             }
             // 平台 + 木箱
             player.inv.add(ItemId::WOOD, 20);
-            let plat_idx = crate::craft::RECIPES
+            let plat_idx = crate::craft::recipes()
                 .iter()
-                .position(|r| r.id == "platform")
+                .position(|r| r.key == "terraria:platform")
                 .unwrap_or(0);
             if let Some(msg) = player.try_craft(world, plat_idx) {
                 tracing::info!(msg, "demo platform craft");
@@ -177,9 +177,9 @@ impl TerrariaApp {
                 tracing::info!(msg, "demo place platform");
             }
             // 木梯 + 木甲
-            let ladder_idx = crate::craft::RECIPES
+            let ladder_idx = crate::craft::recipes()
                 .iter()
-                .position(|r| r.id == "ladder")
+                .position(|r| r.key == "terraria:ladder")
                 .unwrap_or(0);
             if let Some(msg) = player.try_craft(world, ladder_idx) {
                 tracing::info!(msg, "demo ladder craft");
@@ -200,9 +200,9 @@ impl TerrariaApp {
             tracing::info!(on_l, "demo ladder touch");
             player.inv.add(ItemId::WOOD, 20);
             player.inv.add(ItemId::GEL, 8);
-            let armor_idx = crate::craft::RECIPES
+            let armor_idx = crate::craft::recipes()
                 .iter()
-                .position(|r| r.id == "wood_armor")
+                .position(|r| r.key == "terraria:wood_armor")
                 .unwrap_or(0);
             // 回工作台搓甲
             if let Some((wbx, wby)) = (0..WORLD_W).find_map(|x| {
@@ -225,9 +225,9 @@ impl TerrariaApp {
             player.inv.add(ItemId::IRON_ORE, 3);
             player.inv.add(ItemId::STONE, 20);
             player.inv.add(ItemId::WOOD, 20);
-            let furnace_idx = crate::craft::RECIPES
+            let furnace_idx = crate::craft::recipes()
                 .iter()
-                .position(|r| r.id == "furnace")
+                .position(|r| r.key == "terraria:furnace")
                 .unwrap_or(0);
             if let Some(msg) = player.try_craft(world, furnace_idx) {
                 tracing::info!(msg, "demo furnace craft");
@@ -243,16 +243,16 @@ impl TerrariaApp {
                     tracing::info!(ftx, fty, "demo place furnace");
                 }
             }
-            let smelt_idx = crate::craft::RECIPES
+            let smelt_idx = crate::craft::recipes()
                 .iter()
-                .position(|r| r.id == "smelt_copper")
+                .position(|r| r.key == "terraria:smelt_copper")
                 .unwrap_or(0);
             if let Some(msg) = player.try_craft(world, smelt_idx) {
                 tracing::info!(msg, "demo smelt copper");
             }
-            let bed_idx = crate::craft::RECIPES
+            let bed_idx = crate::craft::recipes()
                 .iter()
-                .position(|r| r.id == "bed")
+                .position(|r| r.key == "terraria:bed")
                 .unwrap_or(0);
             // 床需工作台
             if let Some((wbx, wby)) = (0..WORLD_W).find_map(|x| {
@@ -299,9 +299,9 @@ impl TerrariaApp {
                 mp = player.mp,
                 "demo sleep skip"
             );
-            let chest_idx = crate::craft::RECIPES
+            let chest_idx = crate::craft::recipes()
                 .iter()
-                .position(|r| r.id == "chest")
+                .position(|r| r.key == "terraria:chest")
                 .unwrap_or(0);
             // 回到工作台旁搓箱
             if let Some((wbx, wby)) = (0..WORLD_W).find_map(|x| {

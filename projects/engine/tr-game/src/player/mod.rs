@@ -13,7 +13,7 @@ pub use sprite::PlayerAtlas;
 use spark_input::Input;
 use tr_core::{BlockId, DamageHit, ItemId, ResistProfile, resolve_damage};
 
-use crate::craft::{CraftStation, RECIPES};
+use crate::craft::{CraftStation, recipes};
 use crate::grapple::Grapple;
 use crate::world::{TILE, WORLD_H, World, tile_x_near, world_pixel_w, wrap_delta_x, wrap_tx};
 
@@ -661,9 +661,9 @@ impl Player {
         Some(format!("食用{} +{heal:.0} HP", item.label()))
     }
 
-    /// 尝试制作：`recipe_idx` 为 `RECIPES` 下标。
+    /// 尝试制作：`recipe_idx` 为配方表下标。
     pub fn try_craft(&mut self, world: &World, recipe_idx: usize) -> Option<String> {
-        let recipe = RECIPES.get(recipe_idx)?;
+        let recipe = recipes().get(recipe_idx)?;
         let (px, py, pw, ph) = self.hitbox();
         let at_wb = world.near_workbench(px, py, pw, ph);
         match recipe.station {
@@ -677,10 +677,10 @@ impl Player {
             }
             CraftStation::Furnace => {}
         }
-        if !self.inv.can_pay(recipe.inputs) {
+        if !self.inv.can_pay(&recipe.inputs) {
             return Some(format!("材料不足：{}", recipe.label));
         }
-        if !self.inv.pay(recipe.inputs) {
+        if !self.inv.pay(&recipe.inputs) {
             return Some("材料不足".into());
         }
         self.inv.add(recipe.output, recipe.output_count);

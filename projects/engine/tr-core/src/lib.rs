@@ -6,6 +6,7 @@ mod content;
 mod content_module;
 mod damage;
 mod fluid;
+mod recipe;
 mod schema;
 mod tile;
 mod tile_sets;
@@ -20,6 +21,7 @@ pub use content::{
 pub use content_module::{ContentModule, TileRegistration, boot_content_modules, tile_sets_from_registry};
 pub use damage::{DamageHit, DamageType, ResistProfile, resolve_damage};
 pub use fluid::FluidLevel;
+pub use recipe::{RecipeDef, RecipeRegistration, RecipeStation};
 pub use schema::{
     SchemaToolKind, block_def_from_schema, consumable_item_from_schema, example_dirt_block,
     placeable_item_from_schema, tool_item_from_schema,
