@@ -15,10 +15,13 @@ mod wld;
 
 pub use biome::{BiomeId, biome_at};
 pub use content::{
-    BlockDef, BlockFaceKind, ContentRegistry, ItemDef, block_def, content, install,
+    BlockDef, BlockFaceKind, ContentRegistry, ItemDef, WallDef, block_def, content, install,
     install_builtin_fixture, is_installed, item_def, try_content,
 };
-pub use content_module::{ContentModule, TileRegistration, boot_content_modules, tile_sets_from_registry};
+pub use content_module::{
+    ContentModule, ItemRegistration, TileRegistration, WallRegistration, boot_content_modules,
+    tile_sets_from_registry,
+};
 pub use damage::{DamageHit, DamageType, ResistProfile, resolve_damage};
 pub use fluid::FluidLevel;
 pub use recipe::{RecipeDef, RecipeRegistration, RecipeStation};
@@ -385,9 +388,35 @@ pub struct WallId(pub u8);
 
 impl WallId {
     pub const NONE: Self = Self(0);
-    pub const DIRT: Self = Self(1);
-    pub const STONE: Self = Self(2);
-    pub const WOOD: Self = Self(3);
+    /// 石墙。正版 `WallID.Stone` = 1。
+    pub const STONE: Self = Self(1);
+    /// 泥土墙。正版 `WallID.Dirt` = 2。
+    pub const DIRT: Self = Self(2);
+    /// 木墙。正版 `WallID.Wood` = 4。
+    pub const WOOD: Self = Self(4);
+
+    /// 旧开发快照夹具墙编号迁移。
+    pub fn from_fixture_id(v: u8) -> Self {
+        match v {
+            0 => Self::NONE,
+            1 => Self::DIRT,
+            2 => Self::STONE,
+            3 => Self::WOOD,
+            other => Self(other),
+        }
+    }
+
+    /// `Wall_N` 文件编号。
+    pub fn texture_file(self) -> Option<u32> {
+        try_content()
+            .and_then(|c| c.wall(self))
+            .and_then(|d| d.texture_file)
+            .or(match self {
+                Self::NONE => None,
+                // 未装内容表时回退：身份已与文件号对齐。
+                other => Some(u32::from(other.0)),
+            })
+    }
 
     pub fn color(self) -> Option<(f32, f32, f32)> {
         match self {
@@ -413,6 +442,11 @@ impl WallId {
     }
 
     pub fn max_hp(self) -> u16 {
+        if let Some(c) = try_content() {
+            if let Some(d) = c.wall(self) {
+                return d.max_hp;
+            }
+        }
         match self {
             Self::NONE => 0,
             Self::DIRT => 40,
@@ -423,6 +457,11 @@ impl WallId {
     }
 
     pub fn drop_item(self) -> Option<ItemId> {
+        if let Some(c) = try_content() {
+            if let Some(d) = c.wall(self) {
+                return d.drop;
+            }
+        }
         match self {
             Self::DIRT => Some(ItemId::DIRT),
             Self::STONE => Some(ItemId::STONE),
@@ -523,6 +562,13 @@ impl ItemId {
         Self::STONE_WALL,
         Self::COPPER_COIN,
     ];
+
+    /// `Item_N` 文件编号。
+    pub fn texture_file(self) -> Option<u32> {
+        try_content()
+            .and_then(|c| c.item(self))
+            .and_then(|d| d.texture_file)
+    }
 
     pub fn name(self) -> &'static str {
         match self {

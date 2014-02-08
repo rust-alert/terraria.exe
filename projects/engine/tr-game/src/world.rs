@@ -1160,7 +1160,7 @@ impl World {
         }
     }
 
-    pub fn decode_walls(&mut self, raw: &str) -> bool {
+    pub fn decode_walls(&mut self, raw: &str, fixture_ids: bool) -> bool {
         let expect = (WORLD_W * WORLD_H) as usize;
         let vals: Vec<u8> = raw
             .split(',')
@@ -1171,7 +1171,11 @@ impl World {
             return false;
         }
         for (i, v) in vals.into_iter().enumerate() {
-            self.walls[i] = WallId(v);
+            self.walls[i] = if fixture_ids {
+                WallId::from_fixture_id(v)
+            } else {
+                WallId(v)
+            };
         }
         self.wall_frames.clear();
         crate::tile_frame::stamp_walls_all(self);

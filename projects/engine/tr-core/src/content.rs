@@ -185,8 +185,21 @@ pub struct ItemDef {
     pub in_palette: bool,
     /// 图标贴图路径。
     pub texture: String,
+    /// `Item_N` 文件编号。`None` 表示没有这张图。
+    pub texture_file: Option<u32>,
     /// 持有时额外背包格（布袋等）。
     pub bag_bonus_slots: u32,
+}
+
+/// 背景墙定义。
+#[derive(Debug, Clone)]
+pub struct WallDef {
+    pub key: String,
+    pub name: String,
+    pub max_hp: u16,
+    pub drop: Option<ItemId>,
+    /// `Wall_N` 文件编号。
+    pub texture_file: Option<u32>,
 }
 
 /// 内容注册表。
@@ -194,9 +207,11 @@ pub struct ItemDef {
 pub struct ContentRegistry {
     blocks: Vec<Option<BlockDef>>,
     items: Vec<Option<ItemDef>>,
+    walls: Vec<Option<WallDef>>,
     pub(crate) recipes: Vec<crate::RecipeDef>,
     block_keys: HashMap<String, BlockId>,
     item_keys: HashMap<String, ItemId>,
+    wall_keys: HashMap<String, WallId>,
     palette: Vec<ItemId>,
     next_block: u32,
     next_item: u32,
@@ -304,8 +319,30 @@ impl ContentRegistry {
             color: [0.5, 0.5, 0.5],
             in_palette: false,
             texture: String::new(),
+            texture_file: None,
             bag_bonus_slots: 0,
         })
+    }
+
+    pub fn wall(&self, id: WallId) -> Option<&WallDef> {
+        self.walls.get(id.0 as usize).and_then(|s| s.as_ref())
+    }
+
+    pub fn register_wall_at(&mut self, id: WallId, def: WallDef) -> Result<(), String> {
+        self.ensure_writable()?;
+        if self.wall_keys.contains_key(&def.key) {
+            return Err(format!("墙 key 重复：{}", def.key));
+        }
+        let idx = id.0 as usize;
+        while self.walls.len() <= idx {
+            self.walls.push(None);
+        }
+        if self.walls[idx].is_some() {
+            return Err(format!("墙 ID {} 已被占用", id.0));
+        }
+        self.wall_keys.insert(def.key.clone(), id);
+        self.walls[idx] = Some(def);
+        Ok(())
     }
 
     pub fn register_block_at(&mut self, id: BlockId, def: BlockDef) -> Result<(), String> {

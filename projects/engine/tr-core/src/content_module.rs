@@ -3,9 +3,9 @@
 //! 玩法定义由实现 [`ContentModule`] 的代码在启动时写入 [`ContentRegistry`]。
 //! 仓库不携带从正版安装导出的表文件。素材只存逻辑键，运行时再从用户安装解析。
 
-use crate::content::{BlockDef, ContentRegistry, install, is_installed};
+use crate::content::{BlockDef, ContentRegistry, ItemDef, WallDef, install, is_installed};
 use crate::tile_sets::{TileSets, install_tile_sets, try_tile_sets};
-use crate::{BlockId, ItemId};
+use crate::{BlockId, ItemId, WallId};
 
 /// 一个内容包。vanilla 与 mod 都实现本 trait。
 pub trait ContentModule {
@@ -202,6 +202,130 @@ impl TileRegistration<'_> {
         }
         self.registry
             .register_block_at(BlockId(self.id), self.def)
+    }
+}
+
+/// 按类型 id 登记一种物品。
+pub struct ItemRegistration<'a> {
+    registry: &'a mut ContentRegistry,
+    id: u32,
+    def: ItemDef,
+}
+
+impl ContentRegistry {
+    /// 开始登记 `id` 号物品。
+    pub fn item_entry(&mut self, id: u32) -> ItemRegistration<'_> {
+        ItemRegistration {
+            registry: self,
+            id,
+            def: ItemDef {
+                key: format!("unnamed:{id}"),
+                name: String::new(),
+                places: None,
+                wall: None,
+                heal: None,
+                mine_power: None,
+                max_durability: 0,
+                weapon: None,
+                color: [0.5, 0.5, 0.5],
+                in_palette: true,
+                texture: String::new(),
+                texture_file: None,
+                bag_bonus_slots: 0,
+            },
+        }
+    }
+
+    /// 开始登记 `id` 号墙。
+    pub fn wall_entry(&mut self, id: u8) -> WallRegistration<'_> {
+        WallRegistration {
+            registry: self,
+            id,
+            def: WallDef {
+                key: format!("unnamed_wall:{id}"),
+                name: String::new(),
+                max_hp: 40,
+                drop: None,
+                texture_file: Some(u32::from(id)),
+            },
+        }
+    }
+}
+
+impl ItemRegistration<'_> {
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.def.key = key.into();
+        self
+    }
+
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.def.name = name.into();
+        self
+    }
+
+    pub fn places(mut self, block: BlockId) -> Self {
+        self.def.places = Some(block);
+        self
+    }
+
+    pub fn wall(mut self, wall: WallId) -> Self {
+        self.def.wall = Some(wall);
+        self
+    }
+
+    pub fn item_file(mut self, file_id: u32) -> Self {
+        self.def.texture_file = Some(file_id);
+        self
+    }
+
+    pub fn register(self) -> Result<(), String> {
+        if self.def.name.is_empty() {
+            return Err(format!("物品 {} 缺少显示名", self.id));
+        }
+        self.registry
+            .register_item_at(ItemId(self.id), self.def)
+    }
+}
+
+/// 墙登记进行中。
+pub struct WallRegistration<'a> {
+    registry: &'a mut ContentRegistry,
+    id: u8,
+    def: WallDef,
+}
+
+impl WallRegistration<'_> {
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.def.key = key.into();
+        self
+    }
+
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.def.name = name.into();
+        self
+    }
+
+    pub fn max_hp(mut self, value: u16) -> Self {
+        self.def.max_hp = value;
+        self
+    }
+
+    pub fn drop(mut self, item: ItemId) -> Self {
+        self.def.drop = Some(item);
+        self
+    }
+
+    pub fn wall_file(mut self, file_id: u32) -> Self {
+        self.def.texture_file = Some(file_id);
+        self
+    }
+
+    pub fn register(self) -> Result<(), String> {
+        if self.def.name.is_empty() {
+            return Err(format!("墙 {} 缺少显示名", self.id));
+        }
+        self.registry
+            .register_wall_at(WallId(self.id), self.def)
     }
 }
 

@@ -170,6 +170,8 @@ pub fn boot_content(install: &Path) -> Result<ContentAssets, String> {
     );
     tr_core::boot_content_modules(&[
         &crate::content_tiles::VanillaTiles,
+        &crate::content_items::VanillaWalls,
+        &crate::content_items::BootstrapItems,
         &crate::content_recipes::BootstrapRecipes,
     ])
     .expect("内容图启动");

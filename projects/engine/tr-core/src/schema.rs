@@ -57,6 +57,7 @@ pub fn placeable_item_from_schema(
         color: [0.5, 0.5, 0.5],
         in_palette: true,
         texture: item.base.texture.to_string(),
+        texture_file: None,
         bag_bonus_slots: 0,
     }
 }
@@ -75,6 +76,7 @@ pub fn tool_item_from_schema(path: &ContentPath, item: &TerrariaToolItem) -> Ite
         color: [0.5, 0.5, 0.5],
         in_palette: true,
         texture: item.base.texture.to_string(),
+        texture_file: None,
         bag_bonus_slots: 0,
     }
 }
@@ -93,6 +95,7 @@ pub fn consumable_item_from_schema(path: &ContentPath, item: &TerrariaConsumable
         color: [0.5, 0.5, 0.5],
         in_palette: true,
         texture: item.base.texture.to_string(),
+        texture_file: None,
         bag_bonus_slots: 0,
     }
 }

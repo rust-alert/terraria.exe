@@ -189,7 +189,7 @@ pub fn load_session(
         return Err("方块表长度不匹配".into());
     }
     if let Some(walls) = walls_raw {
-        let _ = world.decode_walls(&walls);
+        let _ = world.decode_walls(&walls, fixture_ids);
     }
     if let Some(chests) = chests_raw {
         let _ = world.decode_chests(&chests);
