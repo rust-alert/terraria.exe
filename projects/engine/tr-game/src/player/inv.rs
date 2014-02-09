@@ -475,6 +475,25 @@ impl Inventory {
         }
     }
 
+    /// 旧会话快照里的物品号仍是夹具编号。
+    pub fn migrate_fixture_items(&mut self) {
+        let map = |s: &mut ItemStack| {
+            s.id = ItemId::from_fixture_id(s.id.0);
+        };
+        for slot in self.hotbar.iter_mut().flatten() {
+            map(slot);
+        }
+        for slot in self.bag.iter_mut().flatten() {
+            map(slot);
+        }
+        if let Some(s) = self.armor.as_mut() {
+            map(s);
+        }
+        if let Some(s) = self.accessory.as_mut() {
+            map(s);
+        }
+    }
+
     pub fn load_hotbar(&mut self, raw: &str) {
         self.hotbar = std::array::from_fn(|_| None);
         for (i, part) in raw.split(',').enumerate() {

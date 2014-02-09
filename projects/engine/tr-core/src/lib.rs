@@ -480,50 +480,76 @@ impl WallId {
 pub struct ItemId(pub u32);
 
 impl ItemId {
-    pub const DIRT: Self = Self(1);
+    /// 泥土。正版 `ItemID.DirtBlock` = 2。
+    pub const DIRT: Self = Self(2);
+    /// 石头。正版 `ItemID.StoneBlock` = 3。
     pub const STONE: Self = Self(3);
-    pub const WOOD: Self = Self(6);
-    pub const WORKBENCH: Self = Self(8);
-    pub const SAPLING: Self = Self(9);
-    pub const WOOD_PICK: Self = Self(10);
-    pub const STONE_PICK: Self = Self(11);
-    pub const WOOD_SWORD: Self = Self(12);
-    pub const TORCH: Self = Self(14);
-    pub const GEL: Self = Self(15);
-    pub const PLATFORM: Self = Self(16);
-    pub const CHEST: Self = Self(17);
-    pub const LADDER: Self = Self(18);
-    pub const WOOD_ARMOR: Self = Self(19);
-    pub const WOOD_BOW: Self = Self(20);
-    pub const WOOD_ARROW: Self = Self(21);
-    pub const GEL_STAFF: Self = Self(22);
-    pub const SAND: Self = Self(23);
-    pub const SNOW: Self = Self(24);
-    pub const COPPER_ORE: Self = Self(25);
-    pub const IRON_ORE: Self = Self(26);
-    pub const COPPER_BAR: Self = Self(27);
-    pub const IRON_BAR: Self = Self(28);
-    pub const FURNACE: Self = Self(29);
-    pub const BED: Self = Self(30);
-    pub const COPPER_PICK: Self = Self(31);
-    /// 布袋：持有时增加背包格。
-    pub const CLOTH_BAG: Self = Self(32);
-    /// 旅行包：更大容量加成。
-    pub const TRAVEL_PACK: Self = Self(33);
-    /// 钩爪：抛出挂墙牵引移动。
-    pub const GRAPPLE: Self = Self(34);
-    /// 凝胶云瓶：装备后可二段跳。
-    pub const CLOUD_BOTTLE: Self = Self(35);
-    /// 绳索：可放置攀爬。
-    pub const ROPE: Self = Self(36);
-    /// 木锤：拆除背景墙。
-    pub const WOOD_HAMMER: Self = Self(37);
-    /// 木墙：只铺背景墙。
-    pub const WOOD_WALL: Self = Self(38);
-    /// 石墙：只铺背景墙。
-    pub const STONE_WALL: Self = Self(39);
-    /// 铜币（ `Item_71`）。
-    pub const COPPER_COIN: Self = Self(40);
+    /// 木材。正版 `ItemID.Wood` = 9。
+    pub const WOOD: Self = Self(9);
+    /// 工作台。正版 `ItemID.WorkBench` = 36。
+    pub const WORKBENCH: Self = Self(36);
+    /// 橡实。正版 `ItemID.Acorn` = 27。
+    pub const SAPLING: Self = Self(27);
+    /// 木镐。正版没有对应物品，不占用正版编号。
+    pub const WOOD_PICK: Self = Self(10001);
+    /// 石镐。正版没有对应物品。
+    pub const STONE_PICK: Self = Self(10002);
+    /// 木剑。正版 `ItemID.WoodenSword` = 24。
+    pub const WOOD_SWORD: Self = Self(24);
+    /// 火把。正版 `ItemID.Torch` = 8。
+    pub const TORCH: Self = Self(8);
+    /// 凝胶。正版 `ItemID.Gel` = 23。
+    pub const GEL: Self = Self(23);
+    /// 木平台。正版 `ItemID.WoodPlatform` = 94。
+    pub const PLATFORM: Self = Self(94);
+    /// 木箱。正版 `ItemID.Chest` = 48。
+    pub const CHEST: Self = Self(48);
+    /// 木梯。正版没有对应物品。
+    pub const LADDER: Self = Self(10003);
+    /// 木甲。正版没有对应物品。
+    pub const WOOD_ARMOR: Self = Self(10004);
+    /// 木弓。正版 `ItemID.WoodenBow` = 39。
+    pub const WOOD_BOW: Self = Self(39);
+    /// 木箭。正版 `ItemID.WoodenArrow` = 40。
+    pub const WOOD_ARROW: Self = Self(40);
+    /// 凝胶法杖。正版没有对应物品。
+    pub const GEL_STAFF: Self = Self(10005);
+    /// 沙。正版 `ItemID.SandBlock` = 169。
+    pub const SAND: Self = Self(169);
+    /// 雪块。正版 `ItemID.SnowBlock` = 593。
+    pub const SNOW: Self = Self(593);
+    /// 铜矿。正版 `ItemID.CopperOre` = 12。
+    pub const COPPER_ORE: Self = Self(12);
+    /// 铁矿。正版 `ItemID.IronOre` = 11。
+    pub const IRON_ORE: Self = Self(11);
+    /// 铜锭。正版 `ItemID.CopperBar` = 20。
+    pub const COPPER_BAR: Self = Self(20);
+    /// 铁锭。正版 `ItemID.IronBar` = 22。
+    pub const IRON_BAR: Self = Self(22);
+    /// 熔炉。正版 `ItemID.Furnace` = 33。
+    pub const FURNACE: Self = Self(33);
+    /// 床。正版 `ItemID.Bed` = 224。
+    pub const BED: Self = Self(224);
+    /// 铜镐。正版 `ItemID.CopperPickaxe` = 3509。
+    pub const COPPER_PICK: Self = Self(3509);
+    /// 布袋。正版没有对应物品。
+    pub const CLOTH_BAG: Self = Self(10006);
+    /// 旅行包。正版没有对应物品。
+    pub const TRAVEL_PACK: Self = Self(10007);
+    /// 钩爪。正版 `ItemID.GrapplingHook` = 84。
+    pub const GRAPPLE: Self = Self(84);
+    /// 云瓶。正版 `ItemID.CloudinaBottle` = 53。
+    pub const CLOUD_BOTTLE: Self = Self(53);
+    /// 绳索。正版 `ItemID.Rope` = 965。
+    pub const ROPE: Self = Self(965);
+    /// 木锤。正版 `ItemID.WoodenHammer` = 196。
+    pub const WOOD_HAMMER: Self = Self(196);
+    /// 木墙。正版 `ItemID.WoodWall` = 93。
+    pub const WOOD_WALL: Self = Self(93);
+    /// 石墙。正版 `ItemID.StoneWall` = 26。
+    pub const STONE_WALL: Self = Self(26);
+    /// 铜币。正版 `ItemID.CopperCoin` = 71。
+    pub const COPPER_COIN: Self = Self(71);
 
     pub const ALL: [Self; 35] = [
         Self::DIRT,
@@ -562,6 +588,48 @@ impl ItemId {
         Self::STONE_WALL,
         Self::COPPER_COIN,
     ];
+
+    /// 旧会话夹具物品号。`TR_DEV_SESSION_V3` 起存的是正版编号，不再走这里。
+    pub fn from_fixture_id(id: u32) -> Self {
+        match id {
+            1 => Self::DIRT,
+            3 => Self::STONE,
+            6 => Self::WOOD,
+            8 => Self::WORKBENCH,
+            9 => Self::SAPLING,
+            10 => Self::WOOD_PICK,
+            11 => Self::STONE_PICK,
+            12 => Self::WOOD_SWORD,
+            14 => Self::TORCH,
+            15 => Self::GEL,
+            16 => Self::PLATFORM,
+            17 => Self::CHEST,
+            18 => Self::LADDER,
+            19 => Self::WOOD_ARMOR,
+            20 => Self::WOOD_BOW,
+            21 => Self::WOOD_ARROW,
+            22 => Self::GEL_STAFF,
+            23 => Self::SAND,
+            24 => Self::SNOW,
+            25 => Self::COPPER_ORE,
+            26 => Self::IRON_ORE,
+            27 => Self::COPPER_BAR,
+            28 => Self::IRON_BAR,
+            29 => Self::FURNACE,
+            30 => Self::BED,
+            31 => Self::COPPER_PICK,
+            32 => Self::CLOTH_BAG,
+            33 => Self::TRAVEL_PACK,
+            34 => Self::GRAPPLE,
+            35 => Self::CLOUD_BOTTLE,
+            36 => Self::ROPE,
+            37 => Self::WOOD_HAMMER,
+            38 => Self::WOOD_WALL,
+            39 => Self::STONE_WALL,
+            40 => Self::COPPER_COIN,
+            other => Self(other),
+        }
+    }
 
     /// `Item_N` 文件编号。
     pub fn texture_file(self) -> Option<u32> {

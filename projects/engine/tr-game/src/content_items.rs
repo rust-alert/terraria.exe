@@ -1,7 +1,4 @@
-//! 当前会用物品的图标文件号登记。
-//!
-//! 物品数值身份仍是过渡期本地编号。`item_file` 只存正版 `Item_N` 文件号，
-//! 不在各渲染模块里手写对照。完整 Item ID 对齐另开切片。
+//! 当前会用物品的登记。数值身份与正版 `ItemID` 对齐，贴图文件号即该编号。
 
 use tr_core::{BlockId, ContentModule, ContentRegistry, ItemId, WallId};
 
@@ -37,6 +34,12 @@ impl ContentModule for BootstrapItems {
             (ItemId::GRAPPLE.0, "terraria:grapple", "钩爪", 84),
             (ItemId::WOOD_WALL.0, "terraria:wood_wall", "木墙", 93),
             (ItemId::PLATFORM.0, "terraria:platform", "木平台", 94),
+            (ItemId::SAND.0, "terraria:sand", "沙", ItemId::SAND.0),
+            (ItemId::SNOW.0, "terraria:snow", "雪块", ItemId::SNOW.0),
+            (ItemId::BED.0, "terraria:bed", "床", ItemId::BED.0),
+            (ItemId::ROPE.0, "terraria:rope", "绳索", ItemId::ROPE.0),
+            (ItemId::WOOD_HAMMER.0, "terraria:wood_hammer", "木锤", ItemId::WOOD_HAMMER.0),
+            (ItemId::COPPER_PICK.0, "terraria:copper_pick", "铜镐", ItemId::COPPER_PICK.0),
         ];
         for &(id, key, name, file) in rows {
             let mut b = registry.item_entry(id).key(key).name(name).item_file(file);
@@ -52,6 +55,10 @@ impl ContentModule for BootstrapItems {
                 x if x == ItemId::WORKBENCH.0 => b.places(BlockId::WORKBENCH),
                 x if x == ItemId::WOOD_WALL.0 => b.wall(WallId::WOOD),
                 x if x == ItemId::STONE_WALL.0 => b.wall(WallId::STONE),
+                x if x == ItemId::SAND.0 => b.places(BlockId::SAND),
+                x if x == ItemId::SNOW.0 => b.places(BlockId::SNOW),
+                x if x == ItemId::BED.0 => b.places(BlockId::BED),
+                x if x == ItemId::ROPE.0 => b.places(BlockId::ROPE),
                 _ => b,
             };
             b.register()?;

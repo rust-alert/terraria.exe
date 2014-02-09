@@ -720,7 +720,7 @@ impl World {
             .join(";")
     }
 
-    pub fn decode_chests(&mut self, raw: &str) -> bool {
+    pub fn decode_chests(&mut self, raw: &str, fixture_ids: bool) -> bool {
         self.chests.clear();
         if raw.is_empty() {
             return true;
@@ -742,14 +742,19 @@ impl World {
                     let Some((a, b)) = e.split_once(':') else {
                         continue;
                     };
-                    let Ok(id) = a.parse::<u32>() else {
+                    let Ok(raw_id) = a.parse::<u32>() else {
                         continue;
+                    };
+                    let id = if fixture_ids {
+                        ItemId::from_fixture_id(raw_id)
+                    } else {
+                        ItemId(raw_id)
                     };
                     let Ok(n) = b.parse::<u32>() else {
                         continue;
                     };
                     if n > 0 {
-                        inv.insert(ItemId(id), n);
+                        inv.insert(id, n);
                     }
                 }
             }
@@ -1236,6 +1241,11 @@ mod tests {
         assert_eq!(BlockId::from_fixture_id(1), BlockId::DIRT);
         assert_eq!(BlockId::from_fixture_id(0), BlockId::AIR);
         assert_eq!(BlockId::from_fixture_id(6), BlockId::WOOD);
+        assert_eq!(ItemId::DIRT.0, 2, "须对齐正版 ItemID.DirtBlock");
+        assert_eq!(ItemId::WOOD.0, 9, "须对齐正版 ItemID.Wood");
+        assert_eq!(ItemId::from_fixture_id(1), ItemId::DIRT);
+        assert_eq!(ItemId::from_fixture_id(6), ItemId::WOOD);
+        assert_eq!(ItemId::from_fixture_id(9), ItemId::SAPLING);
     }
 
     #[test]

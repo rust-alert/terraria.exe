@@ -11,8 +11,10 @@ use crate::player::Player;
 use crate::world::World;
 
 /// 开发会话快照魔数。禁止使用暗示存档兼容的名称。
+const MAGIC_V3: &str = "TR_DEV_SESSION_V3";
+/// 方块已是正版编号，物品仍是夹具编号。只读。
 const MAGIC_V2: &str = "TR_DEV_SESSION_V2";
-/// 上一版夹具编号。只读，写入一律用 [`MAGIC_V2`]。
+/// 方块与物品都是夹具编号。只读。
 const MAGIC_V1: &str = "TR_DEV_SESSION_V1";
 /// 更旧魔数：仅读档兼容。
 const MAGIC_LEGACY: &str = "TERRARIA_SAVE_V1";
@@ -47,7 +49,7 @@ pub fn save_session(
 ) -> Result<PathBuf, String> {
     let path = quick_save_path();
     let mut out = String::new();
-    out.push_str(MAGIC_V2);
+    out.push_str(MAGIC_V3);
     out.push('\n');
     out.push_str(&format!("seed={}\n", world.seed));
     out.push_str(&format!(
@@ -129,9 +131,10 @@ pub fn load_session(
     let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let mut lines = text.lines();
     let magic = lines.next().ok_or("空会话快照")?;
-    let fixture_ids = magic == MAGIC_V1 || magic == MAGIC_LEGACY;
-    if magic != MAGIC_V2 && !fixture_ids {
-        return Err("会话快照版本不匹配（需要 TR_DEV_SESSION_V2）".into());
+    let fixture_tiles = magic == MAGIC_V1 || magic == MAGIC_LEGACY;
+    let fixture_items = magic != MAGIC_V3;
+    if magic != MAGIC_V3 && magic != MAGIC_V2 && !fixture_tiles {
+        return Err("会话快照版本不匹配（需要 TR_DEV_SESSION_V3）".into());
     }
     let mut seed = world.seed;
     let mut blocks_raw = None;
@@ -185,14 +188,14 @@ pub fn load_session(
         *world = World::generate(seed);
     }
     let blocks = blocks_raw.ok_or("缺 blocks")?;
-    if !world.decode_blocks(&blocks, fixture_ids) {
+    if !world.decode_blocks(&blocks, fixture_tiles) {
         return Err("方块表长度不匹配".into());
     }
     if let Some(walls) = walls_raw {
-        let _ = world.decode_walls(&walls, fixture_ids);
+        let _ = world.decode_walls(&walls, fixture_tiles);
     }
     if let Some(chests) = chests_raw {
-        let _ = world.decode_chests(&chests);
+        let _ = world.decode_chests(&chests, fixture_items);
     }
     if let Some(fluids) = fluids_raw {
         let _ = world.decode_fluids(&fluids);
@@ -244,10 +247,17 @@ pub fn load_session(
         if let Some(ac) = accessory_raw.as_ref() {
             player.inv.load_accessory(ac);
         }
+        if fixture_items {
+            player.inv.migrate_fixture_items();
+        }
     } else if let Some(inv) = inv_raw {
         for part in inv.split(',').filter(|s| !s.is_empty()) {
             let (a, b) = part.split_once(':').ok_or("inv 项")?;
-            let id = ItemId(a.parse().map_err(|_| "item id")?);
+            let id = if fixture_items {
+                ItemId::from_fixture_id(a.parse().map_err(|_| "item id")?)
+            } else {
+                ItemId(a.parse().map_err(|_| "item id")?)
+            };
             let n: u32 = b.parse().map_err(|_| "item n")?;
             let _ = player.inv.add(id, n);
         }
