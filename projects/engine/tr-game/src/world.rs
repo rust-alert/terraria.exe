@@ -119,6 +119,7 @@ pub struct World {
 
 impl World {
     pub fn generate(seed: u64) -> Self {
+        crate::content_boot::register_play_content();
         let n = (WORLD_W * WORLD_H) as usize;
         let mut w = Self {
             seed,

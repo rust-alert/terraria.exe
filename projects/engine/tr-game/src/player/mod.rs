@@ -491,7 +491,7 @@ impl Player {
             if let Some(broke) = self.inv.wear_tool(tool, 1) {
                 return Some(broke);
             }
-            Some(format!("{} {}/{}", wall.name(), left, wall.max_hp()))
+            Some(format!("{} {}/{}", wall.label(), left, wall.max_hp()))
         }
     }
 

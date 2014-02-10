@@ -128,117 +128,66 @@ impl BlockId {
 impl BlockId {
     pub fn solid(self) -> bool {
         if let Some(sets) = try_tile_sets() {
-            if let Some(v) = sets.solid(self.0) {
-                return v;
-            }
-            // 属性表已装但本 id 未登记：不能猜成实心。
-            return false;
+            return sets.solid(self.0).unwrap_or(false);
         }
-        if let Some(c) = try_content() {
-            if let Some(d) = c.block(self) {
-                return d.solid;
-            }
-        }
-        !matches!(
-            self,
-            Self::AIR
-                | Self::LEAF
-                | Self::SAPLING
-                | Self::TORCH
-                | Self::LADDER
-                | Self::ROPE
-                | Self::WATER
-                | Self::TREES
-        )
+        try_content()
+            .and_then(|c| c.block(self))
+            .is_some_and(|d| d.solid)
     }
 
     pub fn blocks_motion(self) -> bool {
         if let Some(sets) = try_tile_sets() {
-            if let Some(v) = sets.solid(self.0) {
-                return v || sets.solid_top(self.0).unwrap_or(false);
-            }
-            return false;
+            let solid = sets.solid(self.0).unwrap_or(false);
+            let top = sets.solid_top(self.0).unwrap_or(false);
+            return solid || top;
         }
-        if let Some(c) = try_content() {
-            if let Some(d) = c.block(self) {
-                return d.blocks_motion;
-            }
-        }
-        !matches!(
-            self,
-            Self::AIR
-                | Self::LEAF
-                | Self::SAPLING
-                | Self::TORCH
-                | Self::LADDER
-                | Self::ROPE
-                | Self::WATER
-                | Self::TREES
-        )
+        try_content()
+            .and_then(|c| c.block(self))
+            .is_some_and(|d| d.blocks_motion)
     }
 
     pub fn is_fluid(self) -> bool {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.block(self) {
-                return d.is_fluid;
-            }
-        }
+        // 水不是物块类型，不能放进按 id 索引的登记表。
         self == Self::WATER
+            || try_content()
+                .and_then(|c| c.block(self))
+                .is_some_and(|d| d.is_fluid)
     }
 
-    /// 是否自然树干。优先读内容表 `is_tree`，回退正版 Trees id。
+    /// 是否自然树干。只读内容表 `is_tree`。
     pub fn is_tree(self) -> bool {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.block(self) {
-                return d.is_tree;
-            }
-        }
-        self == Self::TREES
+        try_content()
+            .and_then(|c| c.block(self))
+            .is_some_and(|d| d.is_tree)
     }
 
     pub fn is_ladder(self) -> bool {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.block(self) {
-                return d.ladder;
-            }
-        }
-        self == Self::LADDER || self == Self::ROPE
+        try_content()
+            .and_then(|c| c.block(self))
+            .is_some_and(|d| d.ladder)
     }
 
     /// 只挡自上而下的脚，可从下方穿过，也可下穿。
     pub fn is_platform(self) -> bool {
-        if let Some(v) = try_tile_sets().and_then(|s| s.solid_top(self.0)) {
-            return v;
+        if let Some(sets) = try_tile_sets() {
+            return sets.solid_top(self.0).unwrap_or(false);
         }
-        if let Some(c) = try_content() {
-            if let Some(d) = c.block(self) {
-                return d.is_platform;
-            }
-        }
-        self == Self::PLATFORM
+        try_content()
+            .and_then(|c| c.block(self))
+            .is_some_and(|d| d.is_platform)
     }
 
     pub fn mineable(self) -> bool {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.block(self) {
-                return d.mineable();
-            }
-        }
-        !matches!(self, Self::AIR | Self::WATER) && self.max_hp() < u16::MAX
+        try_content()
+            .and_then(|c| c.block(self))
+            .is_some_and(|d| d.mineable())
     }
 
-    /// 开采所需最低镐力；`None` 表示徒手可挖。
+    /// 开采所需最低镐力；`None` 表示徒手可挖或未登记。
     pub fn mine_power_need(self) -> Option<u16> {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.block(self) {
-                return d.mine_power_need;
-            }
-        }
-        match self {
-            Self::COPPER_ORE => Some(30),
-            Self::IRON_ORE => Some(35),
-            _ => None,
-        }
+        try_content()
+            .and_then(|c| c.block(self))
+            .and_then(|d| d.mine_power_need)
     }
 
     /// 是否作为光源。
@@ -247,16 +196,10 @@ impl BlockId {
     }
 
     pub fn light_radius(self) -> i32 {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.block(self) {
-                return d.light_radius;
-            }
-        }
-        match self {
-            Self::TORCH => 8,
-            Self::FURNACE => 5,
-            _ => 0,
-        }
+        try_content()
+            .and_then(|c| c.block(self))
+            .map(|d| d.light_radius)
+            .unwrap_or(0)
     }
 
     /// 是否显著遮挡光照传播（平台 / 半透明叶不挡）。
@@ -269,24 +212,9 @@ impl BlockId {
         if let Some(sets) = try_tile_sets() {
             return sets.frame_important(self.0).unwrap_or(false);
         }
-        if let Some(c) = try_content() {
-            if let Some(d) = c.block(self) {
-                return d.frame_important;
-            }
-        }
-        matches!(
-            self,
-            Self::CHEST
-                | Self::WORKBENCH
-                | Self::FURNACE
-                | Self::BED
-                | Self::TORCH
-                | Self::TREES
-                | Self::SAPLING
-                | Self::PLATFORM
-                | Self::LADDER
-                | Self::ROPE
-        )
+        try_content()
+            .and_then(|c| c.block(self))
+            .is_some_and(|d| d.frame_important)
     }
 
     /// `Tiles_N` 文件编号。没有对应图时为 `None`。
@@ -297,48 +225,16 @@ impl BlockId {
     }
 
     pub fn max_hp(self) -> u16 {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.block(self) {
-                return d.max_hp;
-            }
-        }
-        match self {
-            Self::AIR | Self::WATER => 0,
-            Self::SAPLING | Self::TORCH | Self::LADDER | Self::ROPE => 10,
-            Self::LEAF => 20,
-            Self::PLATFORM | Self::BED => 40,
-            Self::DIRT | Self::GRASS | Self::SAND | Self::SNOW => 50,
-            Self::WOOD | Self::TREES | Self::CHEST => 60,
-            Self::COPPER_ORE => 80,
-            Self::STONE | Self::WORKBENCH | Self::FURNACE => 100,
-            Self::IRON_ORE => 150,
-            _ => 100,
-        }
+        try_content()
+            .and_then(|c| c.block(self))
+            .map(|d| d.max_hp)
+            .unwrap_or(0)
     }
 
     pub fn name(self) -> &'static str {
         match self {
             Self::AIR => "空气",
-            Self::DIRT => "泥土",
-            Self::GRASS => "草皮",
-            Self::STONE => "石头",
-            Self::WOOD => "木材",
-            Self::LEAF => "树叶",
-            Self::WORKBENCH => "工作台",
-            Self::SAPLING => "树苗",
-            Self::TORCH => "火把",
-            Self::PLATFORM => "木平台",
-            Self::CHEST => "木箱",
-            Self::LADDER => "木梯",
-            Self::SAND => "沙子",
-            Self::SNOW => "雪块",
-            Self::COPPER_ORE => "铜矿",
-            Self::IRON_ORE => "铁矿",
-            Self::FURNACE => "熔炉",
-            Self::BED => "床",
             Self::WATER => "水",
-            Self::ROPE => "绳索",
-            Self::TREES => "树",
             _ => "未知",
         }
     }
@@ -354,31 +250,9 @@ impl BlockId {
     }
 
     pub fn drop_item(self) -> Option<ItemId> {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.block(self) {
-                return d.drop;
-            }
-        }
-        match self {
-            Self::DIRT | Self::GRASS => Some(ItemId::DIRT),
-            Self::STONE => Some(ItemId::STONE),
-            Self::WOOD | Self::TREES => Some(ItemId::WOOD),
-            Self::WORKBENCH => Some(ItemId::WORKBENCH),
-            Self::SAPLING => Some(ItemId::SAPLING),
-            Self::TORCH => Some(ItemId::TORCH),
-            Self::PLATFORM => Some(ItemId::PLATFORM),
-            Self::CHEST => Some(ItemId::CHEST),
-            Self::LADDER => Some(ItemId::LADDER),
-            Self::SAND => Some(ItemId::SAND),
-            Self::SNOW => Some(ItemId::SNOW),
-            Self::COPPER_ORE => Some(ItemId::COPPER_ORE),
-            Self::IRON_ORE => Some(ItemId::IRON_ORE),
-            Self::FURNACE => Some(ItemId::FURNACE),
-            Self::BED => Some(ItemId::BED),
-            Self::ROPE => Some(ItemId::ROPE),
-            Self::LEAF | Self::AIR | Self::WATER => None,
-            _ => None,
-        }
+        try_content()
+            .and_then(|c| c.block(self))
+            .and_then(|d| d.drop)
     }
 }
 
@@ -406,16 +280,11 @@ impl WallId {
         }
     }
 
-    /// `Wall_N` 文件编号。
+    /// `Wall_N` 文件编号。未登记则为 `None`。
     pub fn texture_file(self) -> Option<u32> {
         try_content()
             .and_then(|c| c.wall(self))
             .and_then(|d| d.texture_file)
-            .or(match self {
-                Self::NONE => None,
-                // 未装内容表时回退：身份已与文件号对齐。
-                other => Some(u32::from(other.0)),
-            })
     }
 
     pub fn color(self) -> Option<(f32, f32, f32)> {
@@ -428,46 +297,34 @@ impl WallId {
     }
 
     pub fn name(self) -> &'static str {
-        match self {
-            Self::DIRT => "泥土墙",
-            Self::STONE => "石墙",
-            Self::WOOD => "木墙",
-            _ => "无墙",
+        if self == Self::NONE {
+            "无墙"
+        } else {
+            "未知"
         }
     }
 
-    /// 显示名：内容表优先（当前墙无独立内容项，回退常量名）。
+    /// 显示名：只读内容表。
     pub fn label(self) -> String {
+        if let Some(c) = try_content() {
+            if let Some(d) = c.wall(self) {
+                return d.name.clone();
+            }
+        }
         self.name().to_string()
     }
 
     pub fn max_hp(self) -> u16 {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.wall(self) {
-                return d.max_hp;
-            }
-        }
-        match self {
-            Self::NONE => 0,
-            Self::DIRT => 40,
-            Self::STONE => 70,
-            Self::WOOD => 50,
-            _ => 40,
-        }
+        try_content()
+            .and_then(|c| c.wall(self))
+            .map(|d| d.max_hp)
+            .unwrap_or(0)
     }
 
     pub fn drop_item(self) -> Option<ItemId> {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.wall(self) {
-                return d.drop;
-            }
-        }
-        match self {
-            Self::DIRT => Some(ItemId::DIRT),
-            Self::STONE => Some(ItemId::STONE),
-            Self::WOOD => Some(ItemId::WOOD),
-            _ => None,
-        }
+        try_content()
+            .and_then(|c| c.wall(self))
+            .and_then(|d| d.drop)
     }
 
     pub fn mineable(self) -> bool {

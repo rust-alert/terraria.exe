@@ -140,6 +140,17 @@ fn log_pixel_grid(tex: &RgbaTexture) {
     }
 }
 
+/// 只登记玩法模块，不读安装目录。查询物块属性前必须先走到这里。
+pub fn register_play_content() {
+    tr_core::boot_content_modules(&[
+        &crate::content_tiles::VanillaTiles,
+        &crate::content_items::VanillaWalls,
+        &crate::content_items::BootstrapItems,
+        &crate::content_recipes::BootstrapRecipes,
+    ])
+    .expect("内容图启动");
+}
+
 /// 启动内容。解码证明贴图失败则返回错误，不退回程序化色块冒充正版素材。
 pub fn boot_content(install: &Path) -> Result<ContentAssets, String> {
     let images = install.join("Content").join("Images");
@@ -168,13 +179,7 @@ pub fn boot_content(install: &Path) -> Result<ContentAssets, String> {
         target: "tr.content",
         "内容图由 ContentModule 注册。物块使用公开类型 id，配方走同一注册表"
     );
-    tr_core::boot_content_modules(&[
-        &crate::content_tiles::VanillaTiles,
-        &crate::content_items::VanillaWalls,
-        &crate::content_items::BootstrapItems,
-        &crate::content_recipes::BootstrapRecipes,
-    ])
-    .expect("内容图启动");
+    register_play_content();
     let mut assets = ContentAssets::empty();
     assets.install_root = Some(install.to_path_buf());
     assets.boot_frames = proof;
