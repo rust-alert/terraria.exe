@@ -1366,9 +1366,9 @@ mod tests {
     }
 
     #[test]
-    fn terrain_frames_are_stored_and_follow_edits() {
-        let mut world = World::generate(4);
-        let mut dirt = None;
+    fn terrain_does_not_invent_frames() {
+        let world = World::generate(4);
+        let mut dirt = 0;
         for y in 0..WORLD_H {
             for x in 0..WORLD_W {
                 let id = world.get(x, y);
@@ -1384,45 +1384,28 @@ mod tests {
                 ) {
                     continue;
                 }
-                let stored = world.frame(x, y).expect("地形必须带已写入的帧");
-                let live = crate::tile_frame::frame_uv_px(&world, x, y).expect("规则能算出帧");
-                assert_eq!((stored.0 as u16, stored.1 as u16), live);
-                if dirt.is_none() && id == BlockId::DIRT && y > 0 {
-                    dirt = Some((x, y));
-                }
+                dirt += 1;
+                assert!(world.frame(x, y).is_none(), "地形不得写入猜测帧");
+                assert!(crate::tile_frame::frame_uv_px(&world, x, y).is_none());
             }
         }
-        let (x, y) = dirt.expect("应有泥土");
-        world.set(x, y - 1, BlockId::STONE);
-        let stored = world.frame(x, y).expect("改邻居后泥土帧仍在");
-        let live = crate::tile_frame::frame_uv_px(&world, x, y).unwrap();
-        assert_eq!((stored.0 as u16, stored.1 as u16), live);
+        assert!(dirt > 0, "应有泥土类地形");
     }
 
     #[test]
-    fn wall_frames_are_stored_and_follow_edits() {
-        let mut world = World::generate(5);
-        let mut sample = None;
+    fn walls_do_not_invent_frames() {
+        let world = World::generate(5);
+        let mut walls = 0;
         for y in 0..WORLD_H {
             for x in 0..WORLD_W {
                 if world.get_wall(x, y) == tr_core::WallId::NONE {
                     continue;
                 }
-                let stored = world.wall_frame(x, y).expect("墙必须带已写入的帧");
-                let live = crate::tile_frame::wall_frame_uv_px(&world, x, y).expect("规则能算出墙帧");
-                assert_eq!((stored.0 as u16, stored.1 as u16), live);
-                if sample.is_none() {
-                    sample = Some((x, y));
-                }
+                walls += 1;
+                assert!(world.wall_frame(x, y).is_none(), "墙不得写入猜测帧");
+                assert!(crate::tile_frame::wall_frame_uv_px(&world, x, y).is_none());
             }
         }
-        let (x, y) = sample.expect("应有背景墙");
-        world.set_wall(x, y, tr_core::WallId::NONE);
-        assert!(world.wall_frame(x, y).is_none());
-        if world.in_bounds(x + 1, y) && world.get_wall(x + 1, y) != tr_core::WallId::NONE {
-            let stored = world.wall_frame(x + 1, y).unwrap();
-            let live = crate::tile_frame::wall_frame_uv_px(&world, x + 1, y).unwrap();
-            assert_eq!((stored.0 as u16, stored.1 as u16), live);
-        }
+        assert!(walls > 0, "应有背景墙");
     }
 }
