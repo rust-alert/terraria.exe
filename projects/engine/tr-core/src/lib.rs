@@ -565,47 +565,16 @@ impl ItemId {
     }
 
     pub fn as_block(self) -> Option<BlockId> {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.item(self) {
-                return d.places;
-            }
-        }
-        match self {
-            Self::DIRT => Some(BlockId::DIRT),
-            Self::STONE => Some(BlockId::STONE),
-            Self::WOOD => Some(BlockId::WOOD),
-            Self::WORKBENCH => Some(BlockId::WORKBENCH),
-            Self::SAPLING => Some(BlockId::SAPLING),
-            Self::TORCH => Some(BlockId::TORCH),
-            Self::PLATFORM => Some(BlockId::PLATFORM),
-            Self::CHEST => Some(BlockId::CHEST),
-            Self::LADDER => Some(BlockId::LADDER),
-            Self::ROPE => Some(BlockId::ROPE),
-            Self::SAND => Some(BlockId::SAND),
-            Self::SNOW => Some(BlockId::SNOW),
-            Self::COPPER_ORE => Some(BlockId::COPPER_ORE),
-            Self::IRON_ORE => Some(BlockId::IRON_ORE),
-            Self::FURNACE => Some(BlockId::FURNACE),
-            Self::BED => Some(BlockId::BED),
-            _ => None,
-        }
+        try_content()
+            .and_then(|c| c.item(self))
+            .and_then(|d| d.places)
     }
 
     /// 可铺背景墙的材料。
     pub fn as_wall(self) -> Option<WallId> {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.item(self) {
-                return d.wall;
-            }
-        }
-        match self {
-            Self::DIRT => Some(WallId::DIRT),
-            Self::STONE => Some(WallId::STONE),
-            Self::WOOD => Some(WallId::WOOD),
-            Self::WOOD_WALL => Some(WallId::WOOD),
-            Self::STONE_WALL => Some(WallId::STONE),
-            _ => None,
-        }
+        try_content()
+            .and_then(|c| c.item(self))
+            .and_then(|d| d.wall)
     }
 
     /// 食用回复量。

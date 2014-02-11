@@ -59,10 +59,18 @@ impl ContentModule for BootstrapItems {
                 x if x == ItemId::SNOW.0 => b.places(BlockId::SNOW),
                 x if x == ItemId::BED.0 => b.places(BlockId::BED),
                 x if x == ItemId::ROPE.0 => b.places(BlockId::ROPE),
+                x if x == ItemId::COPPER_ORE.0 => b.places(BlockId::COPPER_ORE),
+                x if x == ItemId::IRON_ORE.0 => b.places(BlockId::IRON_ORE),
                 _ => b,
             };
             b.register()?;
         }
+        registry
+            .item_entry(ItemId::LADDER.0)
+            .key("terraria:ladder")
+            .name("木梯")
+            .places(BlockId::LADDER)
+            .register()?;
         Ok(())
     }
 }

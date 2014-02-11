@@ -1247,6 +1247,10 @@ mod tests {
         assert_eq!(ItemId::from_fixture_id(1), ItemId::DIRT);
         assert_eq!(ItemId::from_fixture_id(6), ItemId::WOOD);
         assert_eq!(ItemId::from_fixture_id(9), ItemId::SAPLING);
+        assert_eq!(ItemId::COPPER_ORE.as_block(), Some(BlockId::COPPER_ORE));
+        assert_eq!(ItemId::LADDER.as_block(), Some(BlockId::LADDER));
+        assert_eq!(ItemId::STONE_WALL.as_wall(), Some(WallId::STONE));
+        assert!(ItemId::DIRT.as_wall().is_none());
     }
 
     #[test]
