@@ -61,6 +61,11 @@ impl ContentModule for BootstrapItems {
                 x if x == ItemId::ROPE.0 => b.places(BlockId::ROPE),
                 x if x == ItemId::COPPER_ORE.0 => b.places(BlockId::COPPER_ORE),
                 x if x == ItemId::IRON_ORE.0 => b.places(BlockId::IRON_ORE),
+                x if x == ItemId::GEL.0 => b.heal(18.0),
+                x if x == ItemId::COPPER_PICK.0 => b.mine_power(35).durability(140),
+                x if x == ItemId::WOOD_SWORD.0 => b.durability(100),
+                x if x == ItemId::WOOD_BOW.0 => b.durability(120),
+                x if x == ItemId::WOOD_HAMMER.0 => b.durability(100),
                 _ => b,
             };
             b.register()?;
@@ -70,6 +75,38 @@ impl ContentModule for BootstrapItems {
             .key("terraria:ladder")
             .name("木梯")
             .places(BlockId::LADDER)
+            .register()?;
+        registry
+            .item_entry(ItemId::WOOD_PICK.0)
+            .key("terraria:wood_pick")
+            .name("木镐")
+            .mine_power(25)
+            .durability(80)
+            .register()?;
+        registry
+            .item_entry(ItemId::STONE_PICK.0)
+            .key("terraria:stone_pick")
+            .name("石镐")
+            .mine_power(40)
+            .durability(180)
+            .register()?;
+        registry
+            .item_entry(ItemId::GEL_STAFF.0)
+            .key("terraria:gel_staff")
+            .name("凝胶法杖")
+            .durability(90)
+            .register()?;
+        registry
+            .item_entry(ItemId::CLOTH_BAG.0)
+            .key("terraria:cloth_bag")
+            .name("布袋")
+            .bag_slots(8)
+            .register()?;
+        registry
+            .item_entry(ItemId::TRAVEL_PACK.0)
+            .key("terraria:travel_pack")
+            .name("旅行包")
+            .bag_slots(16)
             .register()?;
         Ok(())
     }

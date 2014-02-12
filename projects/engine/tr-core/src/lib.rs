@@ -552,16 +552,10 @@ impl ItemId {
 
     /// 持有一件该物品时额外增加的背包格数；非背包道具为 0。
     pub fn bag_bonus_slots(self) -> u32 {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.item(self) {
-                return d.bag_bonus_slots;
-            }
-        }
-        match self {
-            Self::CLOTH_BAG => 8,
-            Self::TRAVEL_PACK => 16,
-            _ => 0,
-        }
+        try_content()
+            .and_then(|c| c.item(self))
+            .map(|d| d.bag_bonus_slots)
+            .unwrap_or(0)
     }
 
     pub fn as_block(self) -> Option<BlockId> {
@@ -579,29 +573,15 @@ impl ItemId {
 
     /// 食用回复量。
     pub fn heal_amount(self) -> Option<f32> {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.item(self) {
-                return d.heal;
-            }
-        }
-        match self {
-            Self::GEL => Some(18.0),
-            _ => None,
-        }
+        try_content()
+            .and_then(|c| c.item(self))
+            .and_then(|d| d.heal)
     }
 
     pub fn mine_power(self) -> Option<u16> {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.item(self) {
-                return d.mine_power;
-            }
-        }
-        match self {
-            Self::WOOD_PICK => Some(25),
-            Self::COPPER_PICK => Some(35),
-            Self::STONE_PICK => Some(40),
-            _ => None,
-        }
+        try_content()
+            .and_then(|c| c.item(self))
+            .and_then(|d| d.mine_power)
     }
 
     /// 近战基础伤害（兼容旧调用）；完整参数见 [`ItemId::weapon`]。
@@ -616,40 +596,17 @@ impl ItemId {
     }
 
     pub fn is_tool(self) -> bool {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.item(self) {
-                return d.max_durability > 0 || d.mine_power.is_some() || d.weapon.is_some();
-            }
-        }
-        matches!(
-            self,
-            Self::WOOD_PICK
-                | Self::STONE_PICK
-                | Self::COPPER_PICK
-                | Self::WOOD_HAMMER
-                | Self::WOOD_SWORD
-                | Self::WOOD_BOW
-                | Self::GEL_STAFF
-        )
+        try_content().and_then(|c| c.item(self)).is_some_and(|d| {
+            d.max_durability > 0 || d.mine_power.is_some() || d.weapon.is_some()
+        })
     }
 
     /// 工具最大耐久；非工具为 0。
     pub fn max_durability(self) -> u16 {
-        if let Some(c) = try_content() {
-            if let Some(d) = c.item(self) {
-                return d.max_durability;
-            }
-        }
-        match self {
-            Self::WOOD_PICK => 80,
-            Self::COPPER_PICK => 140,
-            Self::STONE_PICK => 180,
-            Self::WOOD_HAMMER => 100,
-            Self::WOOD_SWORD => 100,
-            Self::WOOD_BOW => 120,
-            Self::GEL_STAFF => 90,
-            _ => 0,
-        }
+        try_content()
+            .and_then(|c| c.item(self))
+            .map(|d| d.max_durability)
+            .unwrap_or(0)
     }
 }
 

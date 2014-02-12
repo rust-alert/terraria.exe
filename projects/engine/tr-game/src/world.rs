@@ -1251,6 +1251,10 @@ mod tests {
         assert_eq!(ItemId::LADDER.as_block(), Some(BlockId::LADDER));
         assert_eq!(ItemId::STONE_WALL.as_wall(), Some(WallId::STONE));
         assert!(ItemId::DIRT.as_wall().is_none());
+        assert_eq!(ItemId::COPPER_PICK.mine_power(), Some(35));
+        assert_eq!(ItemId::WOOD_PICK.mine_power(), Some(25));
+        assert_eq!(ItemId::GEL.heal_amount(), Some(18.0));
+        assert_eq!(ItemId::CLOTH_BAG.bag_bonus_slots(), 8);
     }
 
     #[test]

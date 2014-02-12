@@ -278,6 +278,26 @@ impl ItemRegistration<'_> {
         self
     }
 
+    pub fn heal(mut self, amount: f32) -> Self {
+        self.def.heal = Some(amount);
+        self
+    }
+
+    pub fn mine_power(mut self, power: u16) -> Self {
+        self.def.mine_power = Some(power);
+        self
+    }
+
+    pub fn durability(mut self, value: u16) -> Self {
+        self.def.max_durability = value;
+        self
+    }
+
+    pub fn bag_slots(mut self, extra: u32) -> Self {
+        self.def.bag_bonus_slots = extra;
+        self
+    }
+
     pub fn register(self) -> Result<(), String> {
         if self.def.name.is_empty() {
             return Err(format!("物品 {} 缺少显示名", self.id));
