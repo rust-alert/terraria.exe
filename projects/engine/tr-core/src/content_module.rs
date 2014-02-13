@@ -5,6 +5,7 @@
 
 use crate::content::{BlockDef, ContentRegistry, ItemDef, WallDef, install, is_installed};
 use crate::tile_sets::{TileSets, install_tile_sets, try_tile_sets};
+use crate::weapon::WeaponStats;
 use crate::{BlockId, ItemId, WallId};
 
 /// 一个内容包。vanilla 与 mod 都实现本 trait。
@@ -295,6 +296,11 @@ impl ItemRegistration<'_> {
 
     pub fn bag_slots(mut self, extra: u32) -> Self {
         self.def.bag_bonus_slots = extra;
+        self
+    }
+
+    pub fn weapon(mut self, stats: WeaponStats) -> Self {
+        self.def.weapon = Some(stats);
         self
     }
 

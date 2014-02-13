@@ -1,4 +1,4 @@
-//! 武器表：近战 / 远程 / 魔力。
+//! 武器参数类型。具体数值由内容模块登记到物品上。
 
 use crate::ItemId;
 use crate::damage::DamageType;
@@ -40,71 +40,24 @@ pub struct WeaponStats {
 }
 
 impl ItemId {
-    /// 若该物品是武器则返回战斗参数（优先内容表）。
+    /// 若该物品是武器则返回战斗参数。只读内容表。
     pub fn weapon(self) -> Option<WeaponStats> {
-        if let Some(c) = crate::try_content() {
-            if let Some(d) = c.item(self) {
-                if d.weapon.is_some() {
-                    return d.weapon;
-                }
-            }
-        }
-        match self {
-            Self::WOOD_SWORD => Some(WeaponStats {
-                kind: WeaponKind::Melee,
-                damage: 18.0,
-                dtype: DamageType::Kinetic,
-                interval: 0.22,
-                reach_or_speed: 2.2,
-                knockback: 10.0,
-                mana_cost: 0.0,
-                ammo: None,
-            }),
-            Self::WOOD_PICK | Self::STONE_PICK | Self::COPPER_PICK => Some(WeaponStats {
-                kind: WeaponKind::Melee,
-                damage: 8.0,
-                dtype: DamageType::Kinetic,
-                interval: 0.22,
-                reach_or_speed: 2.0,
-                knockback: 6.0,
-                mana_cost: 0.0,
-                ammo: None,
-            }),
-            Self::WOOD_BOW => Some(WeaponStats {
-                kind: WeaponKind::Ranged,
-                damage: 14.0,
-                dtype: DamageType::Kinetic,
-                interval: 0.38,
-                reach_or_speed: 22.0,
-                knockback: 4.0,
-                mana_cost: 0.0,
-                ammo: Some(Self::WOOD_ARROW),
-            }),
-            Self::GEL_STAFF => Some(WeaponStats {
-                kind: WeaponKind::Magic,
-                damage: 22.0,
-                dtype: DamageType::Elemental,
-                interval: 0.42,
-                reach_or_speed: 16.0,
-                knockback: 3.0,
-                mana_cost: 12.0,
-                ammo: None,
-            }),
-            _ => None,
-        }
+        crate::try_content()
+            .and_then(|c| c.item(self))
+            .and_then(|d| d.weapon)
     }
 
     pub fn is_weapon(self) -> bool {
         self.weapon().is_some()
     }
 
-    /// 显示名：内容表优先，否则常量回退。
+    /// 显示名：只读内容表。
     pub fn label(self) -> String {
         if let Some(c) = crate::try_content() {
             if let Some(d) = c.item(self) {
                 return d.name.clone();
             }
         }
-        self.name().to_string()
+        "未知".to_string()
     }
 }

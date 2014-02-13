@@ -495,47 +495,6 @@ impl ItemId {
             .and_then(|d| d.texture_file)
     }
 
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::DIRT => "泥土",
-            Self::STONE => "石头",
-            Self::WOOD => "木材",
-            Self::WORKBENCH => "工作台",
-            Self::SAPLING => "树苗",
-            Self::WOOD_PICK => "木镐",
-            Self::STONE_PICK => "石镐",
-            Self::WOOD_SWORD => "木剑",
-            Self::TORCH => "火把",
-            Self::GEL => "凝胶",
-            Self::PLATFORM => "木平台",
-            Self::CHEST => "木箱",
-            Self::LADDER => "木梯",
-            Self::WOOD_ARMOR => "树脂甲",
-            Self::WOOD_BOW => "木弓",
-            Self::WOOD_ARROW => "木箭",
-            Self::GEL_STAFF => "凝胶法杖",
-            Self::SAND => "沙子",
-            Self::SNOW => "雪块",
-            Self::COPPER_ORE => "铜矿",
-            Self::IRON_ORE => "铁矿",
-            Self::COPPER_BAR => "铜锭",
-            Self::IRON_BAR => "铁锭",
-            Self::FURNACE => "熔炉",
-            Self::BED => "床",
-            Self::COPPER_PICK => "铜镐",
-            Self::CLOTH_BAG => "布袋",
-            Self::TRAVEL_PACK => "旅行包",
-            Self::GRAPPLE => "钩爪",
-            Self::CLOUD_BOTTLE => "凝胶云瓶",
-            Self::ROPE => "绳索",
-            Self::WOOD_HAMMER => "木锤",
-            Self::WOOD_WALL => "木墙",
-            Self::STONE_WALL => "石墙",
-            Self::COPPER_COIN => "铜币",
-            _ => "未知",
-        }
-    }
-
     pub fn is_grapple(self) -> bool {
         self == Self::GRAPPLE
     }

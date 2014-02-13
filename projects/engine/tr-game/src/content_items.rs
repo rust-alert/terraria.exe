@@ -1,6 +1,8 @@
 //! 当前会用物品的登记。数值身份与正版 `ItemID` 对齐，贴图文件号即该编号。
 
-use tr_core::{BlockId, ContentModule, ContentRegistry, ItemId, WallId};
+use tr_core::{
+    BlockId, ContentModule, ContentRegistry, DamageType, ItemId, WallId, WeaponKind, WeaponStats,
+};
 
 /// 随客户端发布的物品图标登记。
 pub struct BootstrapItems;
@@ -11,6 +13,16 @@ impl ContentModule for BootstrapItems {
     }
 
     fn register(&self, registry: &mut ContentRegistry) -> Result<(), String> {
+        let pick_weapon = WeaponStats {
+            kind: WeaponKind::Melee,
+            damage: 8.0,
+            dtype: DamageType::Kinetic,
+            interval: 0.22,
+            reach_or_speed: 2.0,
+            knockback: 6.0,
+            mana_cost: 0.0,
+            ammo: None,
+        };
         let rows: &[(u32, &str, &str, u32)] = &[
             (ItemId::DIRT.0, "terraria:dirt", "泥土", 2),
             (ItemId::STONE.0, "terraria:stone", "石头", 3),
@@ -62,9 +74,29 @@ impl ContentModule for BootstrapItems {
                 x if x == ItemId::COPPER_ORE.0 => b.places(BlockId::COPPER_ORE),
                 x if x == ItemId::IRON_ORE.0 => b.places(BlockId::IRON_ORE),
                 x if x == ItemId::GEL.0 => b.heal(18.0),
-                x if x == ItemId::COPPER_PICK.0 => b.mine_power(35).durability(140),
-                x if x == ItemId::WOOD_SWORD.0 => b.durability(100),
-                x if x == ItemId::WOOD_BOW.0 => b.durability(120),
+                x if x == ItemId::COPPER_PICK.0 => {
+                    b.mine_power(35).durability(140).weapon(pick_weapon)
+                }
+                x if x == ItemId::WOOD_SWORD.0 => b.durability(100).weapon(WeaponStats {
+                    kind: WeaponKind::Melee,
+                    damage: 18.0,
+                    dtype: DamageType::Kinetic,
+                    interval: 0.22,
+                    reach_or_speed: 2.2,
+                    knockback: 10.0,
+                    mana_cost: 0.0,
+                    ammo: None,
+                }),
+                x if x == ItemId::WOOD_BOW.0 => b.durability(120).weapon(WeaponStats {
+                    kind: WeaponKind::Ranged,
+                    damage: 14.0,
+                    dtype: DamageType::Kinetic,
+                    interval: 0.38,
+                    reach_or_speed: 22.0,
+                    knockback: 4.0,
+                    mana_cost: 0.0,
+                    ammo: Some(ItemId::WOOD_ARROW),
+                }),
                 x if x == ItemId::WOOD_HAMMER.0 => b.durability(100),
                 _ => b,
             };
@@ -82,6 +114,7 @@ impl ContentModule for BootstrapItems {
             .name("木镐")
             .mine_power(25)
             .durability(80)
+            .weapon(pick_weapon)
             .register()?;
         registry
             .item_entry(ItemId::STONE_PICK.0)
@@ -89,12 +122,23 @@ impl ContentModule for BootstrapItems {
             .name("石镐")
             .mine_power(40)
             .durability(180)
+            .weapon(pick_weapon)
             .register()?;
         registry
             .item_entry(ItemId::GEL_STAFF.0)
             .key("terraria:gel_staff")
             .name("凝胶法杖")
             .durability(90)
+            .weapon(WeaponStats {
+                kind: WeaponKind::Magic,
+                damage: 22.0,
+                dtype: DamageType::Elemental,
+                interval: 0.42,
+                reach_or_speed: 16.0,
+                knockback: 3.0,
+                mana_cost: 12.0,
+                ammo: None,
+            })
             .register()?;
         registry
             .item_entry(ItemId::CLOTH_BAG.0)
@@ -107,6 +151,11 @@ impl ContentModule for BootstrapItems {
             .key("terraria:travel_pack")
             .name("旅行包")
             .bag_slots(16)
+            .register()?;
+        registry
+            .item_entry(ItemId::WOOD_ARMOR.0)
+            .key("terraria:wood_armor")
+            .name("树脂甲")
             .register()?;
         Ok(())
     }
