@@ -145,6 +145,10 @@ pub struct BlockDef {
     pub is_fluid: bool,
     /// 是否按邻格规则切地形图集（泥土、石头一类）。
     pub framed_terrain: bool,
+    /// 是否计入房屋室内可通行面积。
+    pub house_space: bool,
+    /// 是否满足房屋家具要求。
+    pub house_furniture: bool,
 }
 
 impl BlockDef {
@@ -303,6 +307,8 @@ impl ContentRegistry {
             is_platform: false,
             is_fluid: false,
             framed_terrain: false,
+            house_space: false,
+            house_furniture: false,
         })
     }
 

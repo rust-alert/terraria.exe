@@ -89,6 +89,8 @@ impl ContentRegistry {
                 is_platform: false,
                 is_fluid: false,
                 framed_terrain: false,
+                house_space: false,
+                house_furniture: false,
             },
         }
     }
@@ -157,6 +159,18 @@ impl TileRegistration<'_> {
     /// 是否可被直接替换。
     pub fn replaceable(mut self, value: bool) -> Self {
         self.def.replaceable = value;
+        self
+    }
+
+    /// 是否计入房屋室内面积。
+    pub fn house_space(mut self, value: bool) -> Self {
+        self.def.house_space = value;
+        self
+    }
+
+    /// 是否满足房屋家具要求。
+    pub fn house_furniture(mut self, value: bool) -> Self {
+        self.def.house_furniture = value;
         self
     }
 

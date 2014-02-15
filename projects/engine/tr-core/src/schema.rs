@@ -36,6 +36,8 @@ pub fn block_def_from_schema(path: &ContentPath, block: &TerrariaBlock) -> Block
         is_platform: false,
         is_fluid: false,
         framed_terrain: false,
+        house_space: false,
+        house_furniture: false,
     }
 }
 

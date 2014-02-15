@@ -27,6 +27,8 @@ fn register_block_and_faces() {
             is_platform: false,
             is_fluid: false,
             framed_terrain: false,
+            house_space: false,
+            house_furniture: false,
         },
     )
     .unwrap();

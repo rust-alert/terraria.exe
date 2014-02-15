@@ -1,6 +1,7 @@
 //! 房屋空间扫描：封闭房间 + 墙 + 光源 + 家具 的最小可玩判定。
 //!
-//! 夹具没有椅/桌，用床或工作台充当「舒适家具」。门用平台开口近似。
+//! 室内格与家具资格由物块登记上的 `house_space` / `house_furniture` 提供。
+//! 门用平台开口近似。
 
 use tr_core::{BlockId, WallId};
 
@@ -8,32 +9,15 @@ use crate::world::{WORLD_H, WORLD_W, World, x_in_bounds};
 
 /// 室内可通行 / 可计入面积的前景。
 fn is_room_fill(id: BlockId) -> bool {
-    if id.is_tree() {
-        return true;
-    }
-    matches!(
-        id,
-        BlockId::AIR
-            | BlockId::TORCH
-            | BlockId::PLATFORM
-            | BlockId::LADDER
-            | BlockId::ROPE
-            | BlockId::LEAF
-            | BlockId::SAPLING
-            | BlockId::CHEST
-            | BlockId::WORKBENCH
-            | BlockId::BED
-            | BlockId::FURNACE
-            | BlockId::WATER
-    )
+    id.house_space()
 }
 
 fn is_boundary(id: BlockId) -> bool {
-    id.solid() && !id.is_platform()
+    id.solid() && !id.is_platform() && !id.house_space()
 }
 
 fn is_furniture(id: BlockId) -> bool {
-    matches!(id, BlockId::BED | BlockId::WORKBENCH | BlockId::CHEST)
+    id.house_furniture()
 }
 
 fn is_light(id: BlockId) -> bool {

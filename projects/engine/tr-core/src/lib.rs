@@ -254,6 +254,23 @@ impl BlockId {
             .and_then(|c| c.block(self))
             .and_then(|d| d.drop)
     }
+
+    /// 是否计入房屋室内可通行面积。空气与液体始终可计。
+    pub fn house_space(self) -> bool {
+        if self == Self::AIR || self.is_fluid() {
+            return true;
+        }
+        try_content()
+            .and_then(|c| c.block(self))
+            .is_some_and(|d| d.house_space || d.is_tree)
+    }
+
+    /// 是否满足房屋家具要求。
+    pub fn house_furniture(self) -> bool {
+        try_content()
+            .and_then(|c| c.block(self))
+            .is_some_and(|d| d.house_furniture)
+    }
 }
 
 /// 背景墙标识（不挡碰撞，挖穿前景后仍可见）。

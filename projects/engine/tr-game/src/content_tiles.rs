@@ -50,6 +50,7 @@ impl ContentModule for VanillaTiles {
             .light_radius(8)
             .max_hp(10)
             .drop(ItemId::TORCH)
+            .house_space(true)
             .register()?;
         registry
             .tile(5)
@@ -59,6 +60,7 @@ impl ContentModule for VanillaTiles {
             .frame_important(true)
             .max_hp(60)
             .drop(ItemId::WOOD)
+            .house_space(true)
             .register()?;
         registry
             .tile(6)
@@ -89,6 +91,7 @@ impl ContentModule for VanillaTiles {
             .light_radius(5)
             .max_hp(100)
             .drop(ItemId::FURNACE)
+            .house_space(true)
             .register()?;
         registry
             .tile(18)
@@ -98,6 +101,8 @@ impl ContentModule for VanillaTiles {
             .frame_important(true)
             .max_hp(100)
             .drop(ItemId::WORKBENCH)
+            .house_space(true)
+            .house_furniture(true)
             .register()?;
         registry
             .tile(19)
@@ -107,6 +112,7 @@ impl ContentModule for VanillaTiles {
             .frame_important(true)
             .max_hp(40)
             .drop(ItemId::PLATFORM)
+            .house_space(true)
             .register()?;
         registry
             .tile(20)
@@ -116,6 +122,7 @@ impl ContentModule for VanillaTiles {
             .replaceable(true)
             .max_hp(10)
             .drop(ItemId::SAPLING)
+            .house_space(true)
             .register()?;
         registry
             .tile(21)
@@ -125,6 +132,8 @@ impl ContentModule for VanillaTiles {
             .frame_important(true)
             .max_hp(60)
             .drop(ItemId::CHEST)
+            .house_space(true)
+            .house_furniture(true)
             .register()?;
         registry
             .tile(30)
@@ -151,6 +160,8 @@ impl ContentModule for VanillaTiles {
             .frame_important(true)
             .max_hp(40)
             .drop(ItemId::BED)
+            .house_space(true)
+            .house_furniture(true)
             .register()?;
         registry
             .tile(147)
@@ -168,6 +179,7 @@ impl ContentModule for VanillaTiles {
             .replaceable(true)
             .max_hp(20)
             .tiles_file(Some(192))
+            .house_space(true)
             .register()?;
         registry
             .tile(213)
@@ -178,6 +190,7 @@ impl ContentModule for VanillaTiles {
             .replaceable(true)
             .max_hp(10)
             .drop(ItemId::ROPE)
+            .house_space(true)
             .register()?;
         // 正版没有独立木梯 Tile。本重写暂用本地编号 1000，贴图复用绳索图集。
         registry
@@ -190,6 +203,7 @@ impl ContentModule for VanillaTiles {
             .max_hp(10)
             .drop(ItemId::LADDER)
             .tiles_file(Some(213))
+            .house_space(true)
             .register()?;
         Ok(())
     }
