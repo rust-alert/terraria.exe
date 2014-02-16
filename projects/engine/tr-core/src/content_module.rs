@@ -26,6 +26,7 @@ pub fn boot_content_modules(modules: &[&dyn ContentModule]) -> Result<(), String
     }
     let mut registry = ContentRegistry::new();
     for module in modules {
+        registry.note_module(module.name());
         module
             .register(&mut registry)
             .map_err(|e| format!("{}: {e}", module.name()))?;
@@ -397,18 +398,23 @@ mod tests {
 
     #[test]
     fn modules_share_one_registry_and_tile_sets() {
-        // 若其它测试已安装则跳过写全局，只测派生函数。
+        // 若其它测试已安装则跳过写全局，只测派生函数与指纹。
         if try_content().is_some() {
             let mut reg = ContentRegistry::new();
+            reg.note_module("example");
             ExampleMod.register(&mut reg).unwrap();
             let sets = super::tile_sets_from_registry(&reg);
             assert_eq!(sets.solid(400), Some(true));
             assert_eq!(sets.solid(1), None);
+            reg.seal();
+            assert_ne!(reg.content_hash(), 0);
             return;
         }
         boot_content_modules(&[&ExampleMod]).unwrap();
         let c = try_content().expect("content");
         assert!(c.block(crate::BlockId(400)).is_some());
+        assert_ne!(c.content_hash(), 0);
+        assert!(c.modules().iter().any(|m| m == "example"));
         let sets = try_tile_sets().expect("tile sets");
         assert_eq!(sets.solid(400), Some(true));
         assert_eq!(sets.solid(999), None);

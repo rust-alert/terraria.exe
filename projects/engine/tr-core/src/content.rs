@@ -220,6 +220,10 @@ pub struct ContentRegistry {
     next_block: u32,
     next_item: u32,
     sealed: bool,
+    /// 模块登记顺序（仅诊断与内容图指纹）。
+    modules: Vec<String>,
+    /// 冻结时算出的内容图指纹。未冻结为 0。
+    content_hash: u64,
 }
 
 impl ContentRegistry {
@@ -235,6 +239,23 @@ impl ContentRegistry {
         self.sealed
     }
 
+    /// 记录参与启动的模块名。须在 `seal` 前调用。
+    pub fn note_module(&mut self, name: impl Into<String>) {
+        if !self.sealed {
+            self.modules.push(name.into());
+        }
+    }
+
+    /// 已记录的模块名。
+    pub fn modules(&self) -> &[String] {
+        &self.modules
+    }
+
+    /// 内容图指纹。未冻结为 0。
+    pub fn content_hash(&self) -> u64 {
+        self.content_hash
+    }
+
     pub fn seal(&mut self) {
         self.palette = self
             .items
@@ -245,6 +266,7 @@ impl ContentRegistry {
                 def.in_palette.then_some(ItemId(i as u32))
             })
             .collect();
+        self.content_hash = compute_content_hash(self);
         self.sealed = true;
     }
 
@@ -457,6 +479,80 @@ impl ContentRegistry {
             Ok(())
         }
     }
+}
+
+/// 内容图指纹。只混入身份字段（模块名、类型 id、稳定键、配方产物），不含显示名。
+fn compute_content_hash(reg: &ContentRegistry) -> u64 {
+    let mut h = 0xcbf29ce484222325u64;
+    let mix = |h: &mut u64, byte: u8| {
+        *h ^= u64::from(byte);
+        *h = h.wrapping_mul(0x100000001b3);
+    };
+    let mix_u64 = |h: &mut u64, v: u64| {
+        for b in v.to_le_bytes() {
+            mix(h, b);
+        }
+    };
+    let mix_str = |h: &mut u64, s: &str| {
+        mix_u64(h, s.len() as u64);
+        for b in s.as_bytes() {
+            mix(h, *b);
+        }
+    };
+
+    mix_str(&mut h, "modules");
+    for name in &reg.modules {
+        mix_str(&mut h, name);
+    }
+
+    mix_str(&mut h, "tiles");
+    for (id, def) in reg.iter_blocks() {
+        mix_u64(&mut h, u64::from(id.0));
+        mix_str(&mut h, &def.key);
+        mix_u64(&mut h, u64::from(u8::from(def.solid)));
+        mix_u64(&mut h, u64::from(u8::from(def.frame_important)));
+        mix_u64(&mut h, u64::from(u8::from(def.house_space)));
+        mix_u64(&mut h, u64::from(u8::from(def.house_furniture)));
+    }
+
+    mix_str(&mut h, "items");
+    for (i, slot) in reg.items.iter().enumerate() {
+        let Some(def) = slot else {
+            continue;
+        };
+        mix_u64(&mut h, i as u64);
+        mix_str(&mut h, &def.key);
+        if let Some(b) = def.places {
+            mix_u64(&mut h, u64::from(b.0));
+        }
+        if let Some(w) = def.wall {
+            mix_u64(&mut h, u64::from(w.0));
+        }
+    }
+
+    mix_str(&mut h, "walls");
+    for (i, slot) in reg.walls.iter().enumerate() {
+        let Some(def) = slot else {
+            continue;
+        };
+        mix_u64(&mut h, i as u64);
+        mix_str(&mut h, &def.key);
+    }
+
+    mix_str(&mut h, "recipes");
+    let mut recipes: Vec<&crate::RecipeDef> = reg.recipes.iter().collect();
+    recipes.sort_by(|a, b| a.key.cmp(&b.key));
+    for r in recipes {
+        mix_str(&mut h, &r.key);
+        mix_u64(&mut h, u64::from(r.output.0));
+        mix_u64(&mut h, u64::from(r.output_count));
+        mix_u64(&mut h, r.inputs.len() as u64);
+        for (id, n) in &r.inputs {
+            mix_u64(&mut h, u64::from(id.0));
+            mix_u64(&mut h, u64::from(*n));
+        }
+    }
+    h
 }
 
 pub fn block_def(id: BlockId) -> BlockDef {

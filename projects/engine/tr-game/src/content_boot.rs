@@ -180,6 +180,14 @@ pub fn boot_content(install: &Path) -> Result<ContentAssets, String> {
         "内容图由 ContentModule 注册。物块使用公开类型 id，配方走同一注册表"
     );
     register_play_content();
+    if let Some(c) = tr_core::try_content() {
+        tracing::info!(
+            target: "tr.content",
+            hash = format!("{:016x}", c.content_hash()),
+            modules = ?c.modules(),
+            "内容图已冻结"
+        );
+    }
     let mut assets = ContentAssets::empty();
     assets.install_root = Some(install.to_path_buf());
     assets.boot_frames = proof;
