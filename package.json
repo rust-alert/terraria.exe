@@ -6,6 +6,7 @@
     "scripts": {
         "fmt": "node scripts/format.mjs",
         "launch": "node scripts/launch.mjs",
+        "scan:content": "node scripts/scan-content.mjs",
         "build": "pnpm --filter @game-gpt/terraria --filter @game-gpt/terraria-unknown-wasm32 build",
         "typecheck": "pnpm --filter @game-gpt/terraria typecheck",
         "napi:build": "node scripts/build/napi.mjs",
