@@ -14,3 +14,12 @@ node_modules/
 dist/
 *.node
 *.wasm
+
+# Terraria 安装内容及其派生产物只能位于仓库外
+Content/
+content-cache/
+metadata-cache/
+derived-content/
+*.xnb
+*.wld
+*.plr
