@@ -45,7 +45,7 @@ pub fn primary_use(
         return player.try_eat().map(PrimaryOutcome::Eat);
     }
 
-    // 专用墙物品：左键直接铺背景墙（对齐原版墙材手感）。
+    // 专用墙物品：左键直接铺背景墙。
     if pressed && sel.as_wall().is_some() && sel.as_block().is_none() {
         return player
             .try_place_wall(world, tx, ty)

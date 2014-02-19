@@ -29,7 +29,7 @@ export interface TerrariaHostBindings {
     vec2Length(x: number, y: number): number;
     blockCount(): number;
     validatePath(path: string): void;
-    /** 阻塞至窗口关闭。`path` 必须是正版 Terraria 安装根。 */
+    /** 阻塞至窗口关闭。`path` 必须是 Terraria 安装根。 */
     emulate(path: string): void;
     /** 写出未压缩 XNB。`out` 必须在仓库和安装目录之外。 */
     unpack(path: string, out: string, only: string[]): string;

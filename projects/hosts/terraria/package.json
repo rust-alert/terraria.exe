@@ -1,7 +1,7 @@
 {
     "name": "@game-gpt/terraria",
     "version": "0.0.0",
-    "description": "Terraria Rust rewrite。窗口：terraria emulate。素材：unpack / extract。均需 --path 指向正版安装根",
+    "description": "Terraria Rust rewrite。窗口：terraria emulate。素材：unpack / extract。均需 --path 指向 Terraria 安装根",
     "type": "commonjs",
     "bin": {
         "terraria": "./dist/cli.js"

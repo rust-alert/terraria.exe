@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use tr_game::{ModLoad, load_original_mods, MOD_LOAD_STATUS};
+use tr_game::{MOD_LOAD_STATUS, ModLoad, load_original_mods};
 
 #[test]
 fn original_mod_load_is_unsupported() {

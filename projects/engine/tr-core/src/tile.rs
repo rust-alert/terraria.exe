@@ -4,7 +4,7 @@
 
 use crate::{BlockId, WallId};
 
-/// 液体种类（正版语义对齐；内容覆盖随完成面扩展）。
+/// 液体种类（语义对齐；内容覆盖随完成面扩展）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[repr(u8)]
 pub enum LiquidKind {
@@ -16,7 +16,7 @@ pub enum LiquidKind {
     Shimmer = 4,
 }
 
-/// 斜坡朝向（与正版 slope 枚举对齐的占位；具体数值以 `.wld` 样本为准）。
+/// 斜坡朝向（与 slope 枚举对齐的占位；具体数值以 `.wld` 样本为准）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[repr(u8)]
 pub enum SlopeKind {

@@ -1,4 +1,4 @@
-//! 玩法音效：优先正版 `Content/Sounds` XNB，失败时回退程序化短音。
+//! 玩法音效：优先 `Content/Sounds` XNB，失败时回退程序化短音。
 
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -11,7 +11,7 @@ static DIG_ROT: AtomicUsize = AtomicUsize::new(0);
 static TINK_ROT: AtomicUsize = AtomicUsize::new(0);
 static HIT_ROT: AtomicUsize = AtomicUsize::new(0);
 
-/// 预解码的正版音效库。
+/// 预解码的Content 音效库。
 #[derive(Debug, Default)]
 pub struct SfxBank {
     dig: Vec<PcmAudio>,
@@ -47,8 +47,7 @@ impl SfxBank {
         self.grab = load_one(&dir, "Grab.xnb");
         self.swing = load_one(&dir, "Item_1.xnb");
         self.chat = load_one(&dir, "Chat.xnb");
-        self.coins = load_one(&dir, "Coins.xnb")
-            .or_else(|| load_one(&dir, "Coin_0.xnb"));
+        self.coins = load_one(&dir, "Coins.xnb").or_else(|| load_one(&dir, "Coin_0.xnb"));
 
         tracing::info!(
             dig = self.dig.len(),
@@ -58,7 +57,7 @@ impl SfxBank {
             swing = self.swing.is_some(),
             chat = self.chat.is_some(),
             coins = self.coins.is_some(),
-            "正版音效已加载"
+            "Content 音效已加载"
         );
     }
 
@@ -109,22 +108,12 @@ fn to_pcm(s: PcmSound) -> PcmAudio {
 }
 
 pub fn dig_chip(bank: &SfxBank, audio: &AudioBus) {
-    bank.play_rot(
-        audio,
-        &bank.dig,
-        &DIG_ROT,
-        Tone::new(220.0, 35, 0.28),
-    );
+    bank.play_rot(audio, &bank.dig, &DIG_ROT, Tone::new(220.0, 35, 0.28));
 }
 
 pub fn dig_break(bank: &SfxBank, audio: &AudioBus) {
     // 打碎优先用 Dig；石头感更强时已有 Tink 变体可扩展。
-    bank.play_rot(
-        audio,
-        &bank.dig,
-        &DIG_ROT,
-        Tone::new(140.0, 70, 0.4),
-    );
+    bank.play_rot(audio, &bank.dig, &DIG_ROT, Tone::new(140.0, 70, 0.4));
 }
 
 pub fn dig_tink(bank: &SfxBank, audio: &AudioBus) {
@@ -132,12 +121,7 @@ pub fn dig_tink(bank: &SfxBank, audio: &AudioBus) {
         dig_chip(bank, audio);
         return;
     }
-    bank.play_rot(
-        audio,
-        &bank.tink,
-        &TINK_ROT,
-        Tone::new(320.0, 40, 0.3),
-    );
+    bank.play_rot(audio, &bank.tink, &TINK_ROT, Tone::new(320.0, 40, 0.3));
 }
 
 pub fn place(bank: &SfxBank, audio: &AudioBus) {
@@ -157,12 +141,7 @@ pub fn melee_hit(bank: &SfxBank, audio: &AudioBus) {
 }
 
 pub fn player_hurt(bank: &SfxBank, audio: &AudioBus) {
-    bank.play_rot(
-        audio,
-        &bank.hit,
-        &HIT_ROT,
-        Tone::new(110.0, 80, 0.4),
-    );
+    bank.play_rot(audio, &bank.hit, &HIT_ROT, Tone::new(110.0, 80, 0.4));
 }
 
 pub fn craft_ok(bank: &SfxBank, audio: &AudioBus) {

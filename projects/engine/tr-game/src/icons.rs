@@ -1,4 +1,4 @@
-//! HUD 物品图标。能对上正版 `Item_N.xnb` 的用那张图，其余仍是程序化色块。
+//! HUD 物品图标。能对上 `Item_N.xnb` 的用那张图，其余仍是程序化色块。
 //! 文件名编号不是夹具 `ItemId`。
 
 use std::collections::HashMap;

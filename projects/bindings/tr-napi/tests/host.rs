@@ -13,5 +13,5 @@ fn reject_missing_original() {
     let err = host
         .validate_path("Z:/definitely-not-terraria")
         .unwrap_err();
-    assert!(err.contains("原版") || err.contains("目录") || err.contains("Content"));
+    assert!(err.contains("目录") || err.contains("Content") || err.contains("安装"));
 }

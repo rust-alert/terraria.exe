@@ -46,7 +46,7 @@ impl JsTerrariaHost {
         self.inner.block_count()
     }
 
-    /// 校验 `--path` 是否为正版安装根（含 `Content/`）。
+    /// 校验 `--path` 是否为 Terraria 安装根（含 `Content/`）。
     #[napi]
     pub fn validate_path(&self, path: String) -> Result<()> {
         self.inner.validate_path(&path).map_err(Error::from_reason)

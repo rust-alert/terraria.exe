@@ -1,5 +1,5 @@
-//! 原版 HUD 铬件：生命心、魔力星、快捷栏底图。
-//! 贴图来自正版 `Content/Images` 顶层 `Heart` / `Mana` / `Inventory_Back`。
+//! HUD 铬件：生命心、魔力星、快捷栏底图。
+//! 贴图来自 `Content/Images` 顶层 `Heart` / `Mana` / `Inventory_Back`。
 
 use std::path::Path;
 
@@ -89,21 +89,19 @@ impl HudChrome {
     }
 
     /// 快捷栏槽底图。无色块描边表示选中。
-    pub fn paint_slot(
-        &self,
-        draw: &mut DrawList,
-        x: f32,
-        y: f32,
-        size: f32,
-        selected: bool,
-    ) {
+    pub fn paint_slot(&self, draw: &mut DrawList, x: f32, y: f32, size: f32, selected: bool) {
         if let Some(tex) = self.inv_back {
             let tint = if selected {
                 Color::rgba(1.0, 1.0, 0.85, 1.0)
             } else {
                 Color::rgba(0.85, 0.88, 0.95, 0.92)
             };
-            draw.tex_rect(tex, Rect::new(x, y, size, size), Rect::new(0.0, 0.0, 1.0, 1.0), tint);
+            draw.tex_rect(
+                tex,
+                Rect::new(x, y, size, size),
+                Rect::new(0.0, 0.0, 1.0, 1.0),
+                tint,
+            );
             if selected {
                 draw.fill_rect(
                     Rect::new(x - 2.0, y - 2.0, size + 4.0, 2.0),

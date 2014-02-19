@@ -1,6 +1,4 @@
-use tr_types::{
-    BlockFieldOverride, BlockTexture, LocaleText, TerrariaBlock, merge_block,
-};
+use tr_types::{BlockFieldOverride, BlockTexture, LocaleText, TerrariaBlock, merge_block};
 
 #[test]
 fn dirt_only_overrides_name() {

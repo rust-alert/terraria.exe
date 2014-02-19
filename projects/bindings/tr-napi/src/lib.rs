@@ -4,7 +4,7 @@
 //! 产品入口：
 //!
 //! ```text
-//! terraria emulate --path <原版安装目录>
+//! terraria emulate --path <Terraria 安装目录>
 //! terraria unpack --path <安装根> --out <目录>
 //! terraria extract --path <安装根> --out <目录>
 //! ```

@@ -49,7 +49,7 @@ impl TerrariaJsHost {
             .unwrap_or(0)
     }
 
-    /// 校验正版路径（不启动窗口）。
+    /// 校验安装根（不启动窗口）。
     pub fn validate_path(&self, path: &str) -> Result<(), String> {
         validate_original_install(PathBuf::from(path).as_path())
     }
@@ -59,15 +59,23 @@ impl TerrariaJsHost {
         run_emulate(EmulateOptions::new(path))
     }
 
-    /// 把正版 XNB 解成未压缩 XNB。`out` 必须在仓库和安装目录之外。
+    /// 把 Content XNB 解成未压缩 XNB。`out` 必须在仓库和安装目录之外。
     pub fn unpack(&self, path: &str, out: &str, only: &[String]) -> Result<String, String> {
         validate_original_install(PathBuf::from(path).as_path())?;
-        unpack_content(PathBuf::from(path).as_path(), PathBuf::from(out).as_path(), only)
+        unpack_content(
+            PathBuf::from(path).as_path(),
+            PathBuf::from(out).as_path(),
+            only,
+        )
     }
 
-    /// 把正版 `Texture2D` 写成 PNG。PNG 编码走 `spark-image`。
+    /// 把 `Texture2D` 写成 PNG。PNG 编码走 `spark-image`。
     pub fn extract(&self, path: &str, out: &str, only: &[String]) -> Result<String, String> {
         validate_original_install(PathBuf::from(path).as_path())?;
-        extract_content(PathBuf::from(path).as_path(), PathBuf::from(out).as_path(), only)
+        extract_content(
+            PathBuf::from(path).as_path(),
+            PathBuf::from(out).as_path(),
+            only,
+        )
     }
 }

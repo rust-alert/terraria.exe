@@ -21,6 +21,9 @@ fn slime_weak_to_elemental() {
 
 #[test]
 fn slime_resist_toxin() {
-    let out = resolve_damage(DamageHit::new(20.0, DamageType::Toxin), ResistProfile::slime());
+    let out = resolve_damage(
+        DamageHit::new(20.0, DamageType::Toxin),
+        ResistProfile::slime(),
+    );
     assert!((out - 11.0).abs() < 1e-4);
 }

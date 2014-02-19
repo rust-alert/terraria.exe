@@ -2,7 +2,7 @@
 /**
  * 产品入口：
  *
- *   terraria emulate --path <正版 Terraria 安装目录>
+ *   terraria emulate --path <Terraria 安装根>
  *   terraria unpack  --path <安装根> --out <目录> [--only <子串>]
  *   terraria extract --path <安装根> --out <目录> [--only <子串>]
  *
@@ -13,11 +13,11 @@ import { loadTerraria } from "./index";
 
 function usage(): never {
     console.error(`用法：
-  terraria emulate --path <正版 Terraria 安装目录>
+  terraria emulate --path <Terraria 安装根>
   terraria unpack  --path <安装根> --out <目录> [--only <子串>]
   terraria extract --path <安装根> --out <目录> [--only <子串>]
 
-必须传入已购买并安装的原版根目录（含 Content/）。
+须传入已安装的 Terraria 根目录（含 Content/）。
 本仓库不附带商业素材。unpack / extract 的 --out 必须在仓库和安装目录之外。
 不能用 cargo run 启动游戏。`);
     process.exitCode = 2;
@@ -86,7 +86,7 @@ function main() {
             console.error("emulate 不接受 --out / --only。");
             usage();
         }
-        console.log(`terraria emulate：正版路径 ${path}`);
+        console.log(`terraria emulate：安装根 ${path}`);
         host.emulate(path);
         return;
     }

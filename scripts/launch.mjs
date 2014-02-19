@@ -1,8 +1,8 @@
 /**
- * `pnpm launch`：编译当前 Rust 与 TypeScript，再启动本机正版 Terraria。
+ * `pnpm launch`：编译当前 Rust 与 TypeScript，再启动本机 Terraria。
  *
  *   pnpm launch
- *   pnpm launch -- --path <正版安装根>
+ *   pnpm launch -- --path <Terraria 安装根>
  *   pnpm launch -- --release
  */
 
@@ -167,14 +167,14 @@ function main() {
     const install = given ?? discoverTerraria();
     if (!install) {
         fail(
-            "没有找到本机正版 Terraria（Content/Images）。请安装 Steam 版，或执行：pnpm launch -- --path <安装根>",
+            "没有找到本机 Terraria（Content/Images）。请安装 Steam 版，或执行：pnpm launch -- --path <安装根>",
         );
     }
     if (!isTerrariaRoot(install)) {
-        fail(`不是正版安装根（缺少 Content/Images）：${install}`);
+        fail(`不是 Terraria 安装根（缺少 Content/Images）：${install}`);
     }
 
-    console.log(`pnpm launch：正版路径 ${install}`);
+    console.log(`pnpm launch：安装根 ${install}`);
     const napiArgs = [path.join(root, "scripts", "build", "napi.mjs")];
     if (release) {
         napiArgs.push("--release");

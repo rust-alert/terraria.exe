@@ -1,4 +1,4 @@
-//! 正版贴图条。启动时解码的图直接画在界面上。泥土方块另用 `Tiles_0` 第一格。
+//! Content 贴图条。启动时解码的图直接画在界面上。泥土方块另用 `Tiles_0` 第一格。
 
 use spark_core::{Color, Rect};
 use spark_image::PixelImage;
@@ -37,7 +37,7 @@ impl ProofGpu {
             {
                 Ok(pixels) => pixels,
                 Err(e) => {
-                    tracing::error!(name = %image.name, ?e, "正版贴图无法交给像素图");
+                    tracing::error!(name = %image.name, ?e, "Content 贴图无法交给像素图");
                     continue;
                 }
             };
@@ -50,7 +50,7 @@ impl ProofGpu {
                     label: image.name.clone(),
                 }),
                 Err(e) => {
-                    tracing::error!(name = %image.name, ?e, "正版证明贴图上传失败");
+                    tracing::error!(name = %image.name, ?e, "Content 证明贴图上传失败");
                 }
             }
         }
@@ -71,7 +71,7 @@ impl TerrariaApp {
             tracing::info!(
                 target: "tr.content",
                 n = self.proof_gpu.slots.len(),
-                "正版证明贴图已绘制"
+                "Content 证明贴图已绘制"
             );
         }
 
@@ -97,7 +97,7 @@ impl TerrariaApp {
             y0 + 6.0,
             12.0,
             Color::rgb(0.85, 0.9, 0.75),
-            "正版贴图",
+            "Content 贴图",
         );
         let mut x = x0 + 12.0;
         for slot in &self.proof_gpu.slots {

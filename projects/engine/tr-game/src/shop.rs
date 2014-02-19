@@ -1,4 +1,4 @@
-//! 商人商店：用铜币购买常用物。图标走正版 `Item_N`。
+//! 商人商店：用铜币购买常用物。图标取自 `Item_N`。
 
 use tr_core::ItemId;
 
@@ -60,10 +60,7 @@ pub fn try_buy(inv: &mut Inventory, offer_i: usize) -> Result<String, String> {
         .ok_or_else(|| "没有这件货".to_string())?;
     let coins = inv.get(ItemId::COPPER_COIN);
     if coins < offer.price {
-        return Err(format!(
-            "铜币不足（需要 {}，现有 {}）",
-            offer.price, coins
-        ));
+        return Err(format!("铜币不足（需要 {}，现有 {}）", offer.price, coins));
     }
     if !inv.try_take(ItemId::COPPER_COIN, offer.price) {
         return Err("扣款失败".into());
