@@ -1,7 +1,7 @@
 //! `unpack` / `extract`。
 //!
 //! `unpack` 写出未压缩 XNB。`extract` 把 `Texture2D` 交给 `PixelImage::save_png`。
-//! 输出不能落在本仓库或正版安装目录里。
+//! 输出不能落在本仓库或 Terraria 安装目录里。
 
 use std::path::{Path, PathBuf};
 
@@ -63,9 +63,8 @@ pub fn extract_content(install: &Path, out: &Path, only: &[String]) -> Result<St
                 let mut png_rel = rel.to_path_buf();
                 png_rel.set_extension("png");
                 let dst = out.join(png_rel);
-                let image = PixelImage::from_rgba8(tex.width, tex.height, tex.rgba).map_err(|e| {
-                    format!("{} 无法交给像素图：{e}", src.display())
-                })?;
+                let image = PixelImage::from_rgba8(tex.width, tex.height, tex.rgba)
+                    .map_err(|e| format!("{} 无法交给像素图：{e}", src.display()))?;
                 if let Some(parent) = dst.parent() {
                     std::fs::create_dir_all(parent)
                         .map_err(|e| format!("无法创建目录 {}：{e}", parent.display()))?;
@@ -90,17 +89,15 @@ pub fn extract_content(install: &Path, out: &Path, only: &[String]) -> Result<St
 fn list_xnb(install: &Path, only: &[String]) -> Result<Vec<PathBuf>, String> {
     let content = install.join("Content");
     if !content.is_dir() {
-        return Err(format!(
-            "未找到 Content/：{}。必须指向正版安装根。",
-            install.display()
-        ));
+        return Err(crate::install::err_missing_content(install));
     }
     let mut files = Vec::new();
     collect_xnb(&content, &mut files)?;
     if !only.is_empty() {
         files.retain(|path| {
             let text = path.to_string_lossy();
-            only.iter().any(|needle| !needle.is_empty() && text.contains(needle))
+            only.iter()
+                .any(|needle| !needle.is_empty() && text.contains(needle))
         });
     }
     files.sort();
@@ -143,7 +140,7 @@ fn guard_output(install: &Path, out: &Path) -> Result<(), String> {
     let install = canonical_dir(install)?;
     let out_abs = absolute_new(out);
     if out_abs.starts_with(&install) {
-        return Err("输出目录不能放在正版安装目录里。".into());
+        return Err(crate::install::err_out_inside_install());
     }
     if inside_repo(&out_abs) {
         return Err("输出目录不能放在本仓库里。请改到仓库外。".into());
@@ -279,7 +276,7 @@ mod tests {
         assert!(plain.starts_with(b"XNB"));
 
         let err = extract_content(&install, &install.join("nested"), &[]).unwrap_err();
-        assert!(err.contains("正版安装"));
+        assert!(err.contains("Terraria 安装"));
         let _ = std::fs::remove_dir_all(&root);
     }
 }
