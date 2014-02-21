@@ -562,22 +562,17 @@ fn maybe_spawn_night_enemy(world: &World, enemies: &mut Vec<Enemy>, player: &Pla
     }
     let sh = world.surface_at(tx);
     let roll = (world.seed ^ (tx as u64).wrapping_mul(19)) % 5;
-    // 入夜后空中刷恶魔眼，深夜地面刷僵尸，其余史莱姆。
-    if night > 0.58 && roll < 2 {
-        let air = 4 + (roll as i32);
+    // 夜间池：恶魔眼（空中）与僵尸（地面）；白天地表史莱姆另由 `spawn_surface_slimes` 负责。
+    if night > 0.55 && roll < 3 {
+        let air = 4 + (roll as i32 % 3);
         enemies.push(Enemy::demon_eye(
             tx as f32 * TILE + 2.0,
             sh as f32 * TILE - TILE * air as f32,
         ));
-    } else if night > 0.72 {
+    } else if night > 0.55 {
         enemies.push(Enemy::zombie(
             tx as f32 * TILE + 2.0,
-            sh as f32 * TILE - TILE * (42.0 / 16.0),
-        ));
-    } else {
-        enemies.push(Enemy::slime(
-            tx as f32 * TILE + 2.0,
-            sh as f32 * TILE - TILE * 0.7,
+            sh as f32 * TILE - TILE * (40.0 / 16.0),
         ));
     }
 }

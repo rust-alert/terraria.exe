@@ -13,31 +13,28 @@ use crate::world::{
 const GRAVITY: f32 = TILE * 40.0;
 const SLIME_W: f32 = TILE * 0.9;
 const SLIME_H: f32 = TILE * 0.7;
-const ZOMBIE_W: f32 = TILE * (20.0 / 16.0);
-const ZOMBIE_H: f32 = TILE * (42.0 / 16.0);
+const ZOMBIE_W: f32 = TILE * (18.0 / 16.0);
+const ZOMBIE_H: f32 = TILE * (40.0 / 16.0);
 const EYE_W: f32 = TILE * 1.5;
 const EYE_H: f32 = TILE * 0.85;
-const TOUCH_DAMAGE: f32 = 8.0;
-const ZOMBIE_TOUCH: f32 = 12.0;
-const EYE_TOUCH: f32 = 7.0;
 const TOUCH_CD: f32 = 0.85;
 const WINDUP_TIME: f32 = 0.32;
 
-/// 敌怪身份（视觉与抗性绑定）。
+/// 敌怪身份（AI / 视觉 / 抗性绑定）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnemyKind {
-    /// 蓝史莱姆：地表软体。
-    ShadowSlime,
-    /// 僵尸：夜间人形敌怪。
+    /// 蓝史莱姆：`AI Style 1`。
+    BlueSlime,
+    /// 僵尸：`AI Style 3` Fighter。
     Zombie,
-    /// 恶魔眼：夜间飞行。白天会被阳光灼烧。
+    /// 恶魔眼：`AI Style 2`。
     DemonEye,
 }
 
 impl EnemyKind {
     fn label(self) -> &'static str {
         match self {
-            Self::ShadowSlime => "蓝史莱姆",
+            Self::BlueSlime => "蓝史莱姆",
             Self::Zombie => "僵尸",
             Self::DemonEye => "恶魔眼",
         }
@@ -45,7 +42,7 @@ impl EnemyKind {
 
     fn body(self) -> Color {
         match self {
-            Self::ShadowSlime => Color::rgb(0.35, 0.55, 0.95),
+            Self::BlueSlime => Color::rgb(0.35, 0.55, 0.95),
             Self::Zombie => Color::rgb(0.45, 0.55, 0.35),
             Self::DemonEye => Color::rgb(0.85, 0.25, 0.35),
         }
@@ -53,7 +50,7 @@ impl EnemyKind {
 
     fn rim(self) -> Color {
         match self {
-            Self::ShadowSlime => Color::rgb(0.55, 0.75, 1.0),
+            Self::BlueSlime => Color::rgb(0.55, 0.75, 1.0),
             Self::Zombie => Color::rgb(0.65, 0.75, 0.45),
             Self::DemonEye => Color::rgb(0.95, 0.45, 0.4),
         }
@@ -61,7 +58,7 @@ impl EnemyKind {
 
     fn core(self) -> Color {
         match self {
-            Self::ShadowSlime => Color::rgb(0.85, 0.92, 1.0),
+            Self::BlueSlime => Color::rgb(0.85, 0.92, 1.0),
             Self::Zombie => Color::rgb(0.9, 0.85, 0.7),
             Self::DemonEye => Color::rgb(1.0, 0.85, 0.4),
         }
@@ -69,15 +66,14 @@ impl EnemyKind {
 
     fn resist(self) -> ResistProfile {
         match self {
-            Self::ShadowSlime => ResistProfile::slime(),
-            Self::Zombie => ResistProfile::neutral(),
-            Self::DemonEye => ResistProfile::neutral(),
+            Self::BlueSlime => ResistProfile::slime(),
+            Self::Zombie | Self::DemonEye => ResistProfile::neutral(),
         }
     }
 
     fn width(self) -> f32 {
         match self {
-            Self::ShadowSlime => SLIME_W,
+            Self::BlueSlime => SLIME_W,
             Self::Zombie => ZOMBIE_W,
             Self::DemonEye => EYE_W,
         }
@@ -85,22 +81,31 @@ impl EnemyKind {
 
     fn height(self) -> f32 {
         match self {
-            Self::ShadowSlime => SLIME_H,
+            Self::BlueSlime => SLIME_H,
             Self::Zombie => ZOMBIE_H,
             Self::DemonEye => EYE_H,
         }
     }
 
+    /// Classic 接触伤（待正版回放复核）。
     fn touch_damage(self) -> f32 {
         match self {
-            Self::ShadowSlime => TOUCH_DAMAGE,
-            Self::Zombie => ZOMBIE_TOUCH,
-            Self::DemonEye => EYE_TOUCH,
+            Self::BlueSlime => 7.0,
+            Self::Zombie => 14.0,
+            Self::DemonEye => 18.0,
         }
     }
 
     fn flies(self) -> bool {
         matches!(self, Self::DemonEye)
+    }
+
+    fn max_hp(self) -> f32 {
+        match self {
+            Self::BlueSlime => 25.0,
+            Self::Zombie => 45.0,
+            Self::DemonEye => 60.0,
+        }
     }
 }
 
@@ -117,67 +122,75 @@ pub struct Enemy {
     pub touch_cd: f32,
     pub facing: f32,
     pub resist: ResistProfile,
-    /// 弹跳相位：驱动压扁/拉长剪影。
+    /// 弹跳 / 飞行动画相位。
     pub bob: f32,
-    /// 接触攻击前摇剩余时间；>0 时减速并闪轮廓。
+    /// 接触攻击前摇剩余时间。
     pub windup_t: f32,
+    /// 史莱姆：受伤或入夜后才追玩家。
+    pub aggro: bool,
 }
 
 impl Enemy {
     pub fn slime(x: f32, y: f32) -> Self {
-        let kind = EnemyKind::ShadowSlime;
+        let kind = EnemyKind::BlueSlime;
+        let hp = kind.max_hp();
         Self {
             kind,
             x,
             y,
             vx: 0.0,
             vy: 0.0,
-            hp: 36.0,
-            max_hp: 36.0,
+            hp,
+            max_hp: hp,
             hurt_cd: 0.0,
             touch_cd: 0.0,
             facing: 1.0,
             resist: kind.resist(),
             bob: 0.0,
             windup_t: 0.0,
+            aggro: false,
         }
     }
 
     pub fn zombie(x: f32, y: f32) -> Self {
         let kind = EnemyKind::Zombie;
+        let hp = kind.max_hp();
         Self {
             kind,
             x,
             y,
             vx: 0.0,
             vy: 0.0,
-            hp: 55.0,
-            max_hp: 55.0,
+            hp,
+            max_hp: hp,
             hurt_cd: 0.0,
             touch_cd: 0.0,
             facing: 1.0,
             resist: kind.resist(),
             bob: 0.0,
             windup_t: 0.0,
+            aggro: true,
         }
     }
 
     pub fn demon_eye(x: f32, y: f32) -> Self {
         let kind = EnemyKind::DemonEye;
+        let hp = kind.max_hp();
         Self {
             kind,
             x,
             y,
             vx: 0.0,
             vy: 0.0,
-            hp: 32.0,
-            max_hp: 32.0,
+            hp,
+            max_hp: hp,
             hurt_cd: 0.0,
             touch_cd: 0.0,
             facing: 1.0,
             resist: kind.resist(),
             bob: 0.0,
             windup_t: 0.0,
+            aggro: true,
         }
     }
 
@@ -189,9 +202,9 @@ impl Enemy {
         }
         self.hp -= actual;
         self.hurt_cd = 0.35;
+        self.aggro = true;
         self.vx = knock_dir.signum() * TILE * hit.amount.max(1.0).min(14.0);
         if knock_dir.abs() < 0.01 {
-            // 无明确方向时沿当前朝向反弹
             self.vx = self.facing * TILE * 8.0;
         }
         actual
@@ -212,7 +225,7 @@ impl Enemy {
         ty: i32,
     ) {
         match self.kind {
-            EnemyKind::ShadowSlime => {
+            EnemyKind::BlueSlime => {
                 world.spawn_drop_at_tile(tx, ty, ItemId::GEL, 2);
                 let coins = 1 + ((world.seed ^ (tx as u64).wrapping_mul(17)) % 3) as u32;
                 world.spawn_drop_at_tile(tx, ty, ItemId::COPPER_COIN, coins);
@@ -243,9 +256,9 @@ impl Enemy {
         eye_cell: (u32, u32),
     ) {
         match self.kind {
-            EnemyKind::Zombie => self.draw_zombie(draw, cam_x, cam_y, zombie, zombie_cell),
-            EnemyKind::DemonEye => self.draw_zombie(draw, cam_x, cam_y, eye, eye_cell),
-            EnemyKind::ShadowSlime => self.draw_slime(draw, cam_x, cam_y, slime),
+            EnemyKind::Zombie => self.draw_humanoid(draw, cam_x, cam_y, zombie, zombie_cell),
+            EnemyKind::DemonEye => self.draw_eye(draw, cam_x, cam_y, eye, eye_cell),
+            EnemyKind::BlueSlime => self.draw_slime(draw, cam_x, cam_y, slime),
         }
     }
 
@@ -253,7 +266,19 @@ impl Enemy {
         screen_of(self.x, cam_x)
     }
 
-    fn draw_zombie(
+    fn draw_hp_bar(&self, draw: &mut DrawList, sx: f32, sy: f32, bw: f32) {
+        let ratio = (self.hp / self.max_hp).clamp(0.0, 1.0);
+        draw.fill_rect(
+            Rect::new(sx, sy - 6.0, bw, 3.0),
+            Color::rgb(0.12, 0.08, 0.14),
+        );
+        draw.fill_rect(
+            Rect::new(sx, sy - 6.0, bw * ratio, 3.0),
+            Color::rgb(0.85, 0.28, 0.42),
+        );
+    }
+
+    fn draw_humanoid(
         &self,
         draw: &mut DrawList,
         cam_x: f32,
@@ -264,12 +289,7 @@ impl Enemy {
         let bw = screen_len(self.kind.width());
         let bh = screen_len(self.kind.height());
         let sx = self.screen_x(cam_x);
-        let bob = if self.kind.flies() {
-            screen_len(self.bob.sin() * 6.0)
-        } else {
-            0.0
-        };
-        let sy = screen_of(self.y, cam_y) + bob;
+        let sy = screen_of(self.y, cam_y);
         let flash = self.hurt_cd > 0.0 || self.windup_t > 0.0;
         if let Some(view) = view {
             let mut uv = view.uv;
@@ -299,15 +319,62 @@ impl Enemy {
                 self.kind.core(),
             );
         }
-        let ratio = (self.hp / self.max_hp).clamp(0.0, 1.0);
-        draw.fill_rect(
-            Rect::new(sx, sy - 6.0, bw, 3.0),
-            Color::rgb(0.12, 0.08, 0.14),
-        );
-        draw.fill_rect(
-            Rect::new(sx, sy - 6.0, bw * ratio, 3.0),
-            Color::rgb(0.85, 0.28, 0.42),
-        );
+        self.draw_hp_bar(draw, sx, sy, bw);
+    }
+
+    fn draw_eye(
+        &self,
+        draw: &mut DrawList,
+        cam_x: f32,
+        cam_y: f32,
+        view: Option<crate::npc::NpcView>,
+        cell: (u32, u32),
+    ) {
+        let bw = screen_len(self.kind.width());
+        let bh = screen_len(self.kind.height());
+        let sx = self.screen_x(cam_x);
+        let bob = screen_len(self.bob.sin() * 6.0);
+        let sy = screen_of(self.y, cam_y) + bob;
+        let flash = self.hurt_cd > 0.0 || self.windup_t > 0.0;
+        if let Some(view) = view {
+            let mut uv = view.uv;
+            if self.facing < 0.0 {
+                uv.x += uv.w;
+                uv.w = -uv.w;
+            }
+            let sprite_w = screen_len(cell.0 as f32);
+            let sprite_h = screen_len(cell.1 as f32);
+            let ox = sx + bw * 0.5 - sprite_w * 0.5;
+            let oy = sy + bh * 0.5 - sprite_h * 0.5;
+            let tint = if flash {
+                Color::rgb(1.0, 0.65, 0.65)
+            } else {
+                Color::rgba(1.0, 1.0, 1.0, 1.0)
+            };
+            draw.tex_rect(view.tex, Rect::new(ox, oy, sprite_w, sprite_h), uv, tint);
+        } else {
+            let body = if flash {
+                Color::rgb(0.95, 0.45, 0.45)
+            } else {
+                self.kind.body()
+            };
+            draw.fill_rect(Rect::new(sx, sy, bw, bh), body);
+            let pupil = (bw * 0.28).max(3.0);
+            let px = if self.facing >= 0.0 {
+                sx + bw * 0.55
+            } else {
+                sx + bw * 0.18
+            };
+            draw.fill_rect(
+                Rect::new(px, sy + bh * 0.28, pupil, pupil),
+                Color::rgb(0.95, 0.9, 0.35),
+            );
+            draw.fill_rect(
+                Rect::new(px + pupil * 0.25, sy + bh * 0.35, pupil * 0.45, pupil * 0.45),
+                Color::rgb(0.08, 0.05, 0.1),
+            );
+        }
+        self.draw_hp_bar(draw, sx, sy, bw);
     }
 
     fn draw_slime(
@@ -386,10 +453,12 @@ impl Enemy {
         let rim = rim_pre(self, flash);
         let dest = Rect::new(ox, oy, bw, bh);
         if let Some(view) = slime {
+            // `NPC_1` 为灰度，乘蓝史莱姆身体色。
+            let body = self.kind.body();
             let tint = if flash {
                 Color::rgb(1.0, 0.72, 0.88)
             } else {
-                Color::rgba(1.0, 1.0, 1.0, 1.0)
+                Color::rgba(body.r, body.g, body.b, 1.0)
             };
             draw.tex_rect(view.tex, dest, view.uv, tint);
         } else {
@@ -522,44 +591,79 @@ pub fn update_enemies(
         } else {
             e.facing
         };
-        if e.kind.flies() {
-            let ecy = e.y + eh * 0.5;
-            let pcy = py + ph * 0.5;
-            let dy = pcy - ecy;
-            let tx = wrap_tx((ecx / TILE).floor() as i32);
-            let hover = world.surface_at(tx) as f32 * TILE - TILE * 5.5;
-            let chase = dx.abs() < TILE * 22.0;
-            let speed = if chase {
-                TILE * 4.6 * aggro
-            } else {
-                TILE * 2.2
-            };
-            e.vx = speed * e.facing;
-            e.vy = if chase {
-                dy.signum() * TILE * 2.6 + (e.bob * 2.1).sin() * TILE * 0.3
-            } else {
-                (hover - e.y).clamp(-TILE * 3.0, TILE * 3.0) * 1.4 + e.bob.sin() * TILE * 0.35
-            };
-        } else {
-            let chase_r = TILE * (12.0 + night * 8.0);
-            let base_speed = match e.kind {
-                EnemyKind::Zombie => TILE * 2.8,
-                EnemyKind::ShadowSlime | EnemyKind::DemonEye => TILE * 3.5,
-            };
-            let wander = match e.kind {
-                EnemyKind::Zombie => TILE * 1.6,
-                EnemyKind::ShadowSlime | EnemyKind::DemonEye => TILE * 1.2,
-            };
-            let mut speed = if dx.abs() < chase_r {
-                base_speed * aggro * e.facing
-            } else {
-                wander * e.facing
-            };
-            if e.windup_t > 0.0 {
-                speed *= 0.15;
+        match e.kind {
+            EnemyKind::DemonEye => {
+                // AI Style 2：夜间飞向玩家，白天灼烧已在上方处理。
+                let ecy = e.y + eh * 0.5;
+                let pcy = py + ph * 0.5;
+                let dy = pcy - ecy;
+                let engage = dx.abs() < TILE * 36.0;
+                let speed = if engage {
+                    TILE * 3.8 * aggro
+                } else {
+                    TILE * 1.6
+                };
+                e.vx = speed * e.facing;
+                e.vy = if engage {
+                    (dy.signum() * TILE * 2.2 + (e.bob * 2.1).sin() * TILE * 0.25)
+                        .clamp(-TILE * 4.0, TILE * 4.0)
+                } else {
+                    e.bob.sin() * TILE * 0.4
+                };
             }
-            e.vx = speed;
-            e.vy += GRAVITY * dt;
+            EnemyKind::Zombie => {
+                // AI Style 3 Fighter：只在夜间追玩家，白天灼烧消亡。
+                if night < 0.35 {
+                    e.hp -= dt * 40.0;
+                }
+                let chase = night > 0.35;
+                let mut speed = if chase {
+                    TILE * (1.8 + night * 1.0) * e.facing
+                } else {
+                    TILE * 0.6 * e.facing
+                };
+                if e.windup_t > 0.0 {
+                    speed *= 0.15;
+                }
+                e.vx = speed;
+                e.vy += GRAVITY * dt;
+            }
+            EnemyKind::BlueSlime => {
+                // AI Style 1：无 aggro 时原地小跳；受伤或入夜后朝玩家跳。
+                if night > 0.55 {
+                    e.aggro = true;
+                }
+                e.vy += GRAVITY * dt;
+                let on_ground = e.vy == 0.0
+                    || world
+                        .get(
+                            wrap_tx(((e.x + ew * 0.5) / TILE).floor() as i32),
+                            ((e.y + eh + 1.0) / TILE).floor() as i32,
+                        )
+                        .blocks_motion();
+                if on_ground && e.vy >= 0.0 {
+                    if e.aggro {
+                        let hop = if dx.abs() < TILE * 18.0 {
+                            TILE * 7.2
+                        } else {
+                            TILE * 5.2
+                        };
+                        e.vy = -hop;
+                        e.vx = e.facing * TILE * 2.6;
+                    } else {
+                        // 闲逛：低跳 + 偶发换向。
+                        e.vy = -TILE * 3.2;
+                        if (e.bob * 0.37).sin().abs() < 0.08 {
+                            e.facing = -e.facing;
+                        }
+                        e.vx = e.facing * TILE * 1.1;
+                    }
+                    if e.windup_t > 0.0 {
+                        e.vx *= 0.2;
+                        e.vy *= 0.55;
+                    }
+                }
+            }
         }
 
         move_enemy(world, e, e.vx * dt, 0.0);
