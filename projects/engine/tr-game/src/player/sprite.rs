@@ -74,16 +74,26 @@ impl PlayerAtlas {
         self.upload_fallback(draw);
     }
 
-    /// 按 `PlayerTextureID` 0..=12 取层，CPU alpha 合成后再上传，避免多层 `tex_rect` 叠坏躯干。
+    /// 按正版无甲复合叠序合成（对照 `PlayerTextureID` / 复合胸肩格）。
     fn try_upload_vanilla(
         &mut self,
         draw: &mut DrawList,
         assets: &crate::content_boot::ContentAssets,
     ) -> bool {
-        // 自下而上：腿 → 身 → 臂 → 头 → 眼。只装 0..=12，排除 Extra / EyeBlink。
-        const ORDER: &[u8] = &[10, 11, 12, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2];
-        let mut layers: Vec<(u8, crate::xnb::RgbaTexture)> = Vec::new();
-        for &id in ORDER {
+        // 需要加载的部位；100 = 发型。
+        const NEEDED: &[u8] = &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 100];
+        let mut by_id: [Option<crate::xnb::RgbaTexture>; 101] = std::array::from_fn(|_| None);
+        for &id in NEEDED {
+            if id == 100 {
+                if let Some(path) = find_hair_layer(assets) {
+                    if let Ok(tex) = crate::xnb::decode_texture_file(path) {
+                        if layer_layout_ok(&tex) {
+                            by_id[100] = Some(tex);
+                        }
+                    }
+                }
+                continue;
+            }
             let Some(path) = find_player_layer(assets, id) else {
                 continue;
             };
@@ -91,23 +101,17 @@ impl PlayerAtlas {
                 tracing::warn!(id, path = %path.display(), "玩家图层解码失败");
                 continue;
             };
-            if tex.width != VANILLA_CELL_W || tex.height < VANILLA_CELL_H {
-                tracing::warn!(
-                    id,
-                    w = tex.width,
-                    h = tex.height,
-                    "玩家图层尺寸不符，已跳过"
-                );
+            if !layer_layout_ok(&tex) {
+                tracing::warn!(id, w = tex.width, h = tex.height, "玩家图层布局未支持");
                 continue;
             }
-            layers.push((id, tex));
+            by_id[id as usize] = Some(tex);
         }
-        let has_head = layers.iter().any(|(id, _)| *id == 0);
-        let has_torso = layers.iter().any(|(id, _)| *id == 3 || *id == 6);
-        let has_legs = layers.iter().any(|(id, _)| *id == 10 || *id == 12);
+        let has_head = by_id[0].is_some();
+        let has_torso = by_id[3].is_some() || by_id[6].is_some();
+        let has_legs = by_id[10].is_some() || by_id[11].is_some() || by_id[12].is_some();
         if !has_head || !has_torso || !has_legs {
             tracing::warn!(
-                n = layers.len(),
                 has_head,
                 has_torso,
                 has_legs,
@@ -116,32 +120,70 @@ impl PlayerAtlas {
             return false;
         }
 
-        let sheet_h = layers
-            .iter()
-            .map(|(_, t)| t.height)
-            .min()
-            .unwrap_or(VANILLA_CELL_H);
-        let rows = (sheet_h / VANILLA_CELL_H).max(1);
         let out_w = VANILLA_CELL_W * SPRITE_FRAMES as u32;
         let out_h = VANILLA_CELL_H;
         let mut rgba = vec![0u8; (out_w * out_h * 4) as usize];
+        let shoulder = composite_cell(CompositePart::BackShoulder);
+        let torso = composite_cell(CompositePart::Torso);
 
         for anim in 0..SPRITE_FRAMES as u32 {
-            let src_row = vanilla_body_row(anim as i32, rows);
             let dst_x0 = anim * VANILLA_CELL_W;
-            for (id, tex) in &layers {
-                let tint = layer_tint(*id);
-                blit_layer_frame(&mut rgba, out_w, dst_x0, tex, src_row, tint);
+            let body = body_frame(anim as i32);
+            let leg = leg_frame(anim as i32);
+            let mut blit = |id: u8, cell: Option<(u32, u32)>| {
+                let Some(tex) = by_id[id as usize].as_ref() else {
+                    return;
+                };
+                let (sx, sy) = match cell {
+                    Some(c) => c,
+                    None => layer_src_origin(id, tex, body, leg),
+                };
+                blit_layer_cell(&mut rgba, out_w, dst_x0, tex, sx, sy, layer_tint(id));
+            };
+
+            // 后臂：传统帧原点（网格取 (0,0)；竖条取 body 行）。
+            blit(7, Some(arm_cell(&by_id[7], body)));
+            blit(8, Some(arm_cell(&by_id[8], body)));
+            blit(13, Some(arm_cell(&by_id[13], body)));
+            // 腿：皮肤 → 鞋 → 裤。
+            blit(10, None);
+            blit(12, None);
+            blit(11, None);
+            // 躯干皮肤（胸格）。
+            blit(3, Some(torso_or_strip(&by_id[3], torso, body)));
+            // 无甲复合：仅网格层肩+胸各画一次；竖条整帧只画一次。
+            if by_id[4].as_ref().map(is_grid).unwrap_or(false)
+                || by_id[6].as_ref().map(is_grid).unwrap_or(false)
+            {
+                blit(4, Some(shoulder_or_strip(&by_id[4], shoulder, body)));
+                blit(6, Some(shoulder_or_strip(&by_id[6], shoulder, body)));
+                blit(4, Some(torso_or_strip(&by_id[4], torso, body)));
+                blit(6, Some(torso_or_strip(&by_id[6], torso, body)));
+            } else {
+                blit(4, None);
+                blit(6, None);
             }
+            // 手（胸格）。
+            blit(5, Some(torso_or_strip(&by_id[5], torso, body)));
+            // 头 / 眼白 / 瞳 / 眼皮。
+            blit(0, None);
+            blit(1, None);
+            blit(2, None);
+            blit(15, None);
+            // 发。
+            blit(100, None);
+            // 前手（传统帧）。
+            blit(9, Some(arm_cell(&by_id[9], body)));
         }
 
+        let n = by_id.iter().filter(|t| t.is_some()).count();
         match draw.create_texture(out_w, out_h, rgba) {
             Ok(id) => {
                 self.tex = Some(id);
                 self.cell_w = VANILLA_CELL_W;
                 self.cell_h = VANILLA_CELL_H;
                 self.columns = SPRITE_FRAMES as u32;
-                tracing::info!(n = layers.len(), "玩家合成图集已上传");
+                tracing::info!(n, "玩家合成图集已上传（复合叠序）");
                 true
             }
             Err(e) => {
@@ -596,51 +638,175 @@ fn find_player_layer(
         .map(std::path::PathBuf::as_path)
 }
 
-/// 把玩法动画帧映射到正版竖条行号（身/头共用）。
-fn vanilla_body_row(anim: i32, rows: u32) -> u32 {
-    let row = match anim {
-        0 => 0u32,
+fn find_hair_layer(assets: &crate::content_boot::ContentAssets) -> Option<&std::path::Path> {
+    assets
+        .player_sheets
+        .iter()
+        .find(|p| p.file_name().and_then(|s| s.to_str()) == Some("Player_Hair_1.xnb"))
+        .map(std::path::PathBuf::as_path)
+}
+
+/// 竖条 `40×N`，或 1.4.5 躯干/臂网格 `360×224`（9×4 的 `40×56`）。
+fn layer_layout_ok(tex: &crate::xnb::RgbaTexture) -> bool {
+    if tex.width == VANILLA_CELL_W && tex.height >= VANILLA_CELL_H {
+        return true;
+    }
+    tex.width == GRID_SHEET_W && tex.height == GRID_SHEET_H
+}
+
+const GRID_SHEET_W: u32 = 360;
+const GRID_SHEET_H: u32 = 224;
+
+#[derive(Clone, Copy)]
+enum CompositePart {
+    Torso,
+    BackShoulder,
+}
+
+/// 无甲男站立复合格（列, 行）。胸 (0,0)，后肩 (1,1)。
+fn composite_cell(part: CompositePart) -> (u32, u32) {
+    let (col, row) = match part {
+        CompositePart::Torso => (0u32, 0u32),
+        CompositePart::BackShoulder => (1, 1),
+    };
+    (col * VANILLA_CELL_W, row * VANILLA_CELL_H)
+}
+
+fn is_grid(tex: &crate::xnb::RgbaTexture) -> bool {
+    tex.width == GRID_SHEET_W && tex.height == GRID_SHEET_H
+}
+
+/// 头/身/臂用的 `bodyFrame` 行号。
+fn body_frame(anim: i32) -> u32 {
+    match anim {
+        0 => 0,
         1 => 6,
         2 => 7,
         3 => 8,
         4 | 5 => 5,
         _ => 0,
-    };
-    row.min(rows.saturating_sub(1))
+    }
 }
 
-/// 默认角色染色。皮肤层贴图本身已带肤色，乘白色；衣物层为灰度，乘衣服色。
+/// 腿用的 `legFrame` 行号（走时与身可不同步）。
+fn leg_frame(anim: i32) -> u32 {
+    match anim {
+        0 => 0,
+        1 => 6,
+        2 => 7,
+        3 => 8,
+        4 | 5 => 5,
+        _ => 0,
+    }
+}
+
+fn vanilla_body_row(anim: i32, rows: u32) -> u32 {
+    body_frame(anim).min(rows.saturating_sub(1))
+}
+
+fn layer_src_origin(
+    id: u8,
+    tex: &crate::xnb::RgbaTexture,
+    body: u32,
+    leg: u32,
+) -> (u32, u32) {
+    if is_grid(tex) {
+        // 回退：网格层默认胸格（复合叠序里会显式传入肩/胸）。
+        return composite_cell(CompositePart::Torso);
+    }
+    let rows = (tex.height / VANILLA_CELL_H).max(1);
+    let row = if matches!(id, 10 | 11 | 12) {
+        leg.min(rows.saturating_sub(1))
+    } else {
+        body.min(rows.saturating_sub(1))
+    };
+    (0, row * VANILLA_CELL_H)
+}
+
+/// 后/前臂：网格取 (0,0)；竖条取 body 行。
+fn arm_cell(tex: &Option<crate::xnb::RgbaTexture>, body: u32) -> (u32, u32) {
+    let Some(tex) = tex.as_ref() else {
+        return (0, 0);
+    };
+    if is_grid(tex) {
+        (0, 0)
+    } else {
+        let rows = (tex.height / VANILLA_CELL_H).max(1);
+        (0, body.min(rows.saturating_sub(1)) * VANILLA_CELL_H)
+    }
+}
+
+fn torso_or_strip(
+    tex: &Option<crate::xnb::RgbaTexture>,
+    torso: (u32, u32),
+    body: u32,
+) -> (u32, u32) {
+    let Some(tex) = tex.as_ref() else {
+        return torso;
+    };
+    if is_grid(tex) {
+        torso
+    } else {
+        let rows = (tex.height / VANILLA_CELL_H).max(1);
+        (0, body.min(rows.saturating_sub(1)) * VANILLA_CELL_H)
+    }
+}
+
+fn shoulder_or_strip(
+    tex: &Option<crate::xnb::RgbaTexture>,
+    shoulder: (u32, u32),
+    body: u32,
+) -> (u32, u32) {
+    let Some(tex) = tex.as_ref() else {
+        return shoulder;
+    };
+    if is_grid(tex) {
+        shoulder
+    } else {
+        let rows = (tex.height / VANILLA_CELL_H).max(1);
+        (0, body.min(rows.saturating_sub(1)) * VANILLA_CELL_H)
+    }
+}
+
+/// 默认新建角色染色（与参考外观一致）。一律通道相乘，不做近黑替换。
 fn layer_tint(id: u8) -> Color {
     match id {
+        // 皮肤：Head / Torso / Hands / ArmSkin / ArmHand / LegSkin
+        0 | 3 | 5 | 7 | 9 | 10 => Color::rgb(255.0 / 255.0, 125.0 / 255.0, 90.0 / 255.0),
+        // EyeWhites
+        1 => Color::rgb(1.0, 1.0, 1.0),
+        // Eyes
+        2 => Color::rgb(105.0 / 255.0, 90.0 / 255.0, 75.0 / 255.0),
         // Undershirt / ArmUndershirt
         4 | 8 => Color::rgb(160.0 / 255.0, 180.0 / 255.0, 215.0 / 255.0),
-        // Shirt
-        6 => Color::rgb(175.0 / 255.0, 75.0 / 255.0, 75.0 / 255.0),
+        // Shirt / ArmShirt
+        6 | 13 => Color::rgb(175.0 / 255.0, 165.0 / 255.0, 140.0 / 255.0),
         // Pants
         11 => Color::rgb(255.0 / 255.0, 230.0 / 255.0, 175.0 / 255.0),
         // Shoes
         12 => Color::rgb(160.0 / 255.0, 105.0 / 255.0, 60.0 / 255.0),
+        // Hair
+        100 => Color::rgb(151.0 / 255.0, 100.0 / 255.0, 69.0 / 255.0),
         _ => Color::rgb(1.0, 1.0, 1.0),
     }
 }
 
-/// 把源竖条第 `src_row` 帧 tint 后 alpha-over 到合成横条。
-fn blit_layer_frame(
+/// 把源 `40×56` 单元格 tint 后 alpha-over 到合成横条。
+fn blit_layer_cell(
     dst: &mut [u8],
     dst_w: u32,
     dst_x0: u32,
     src: &crate::xnb::RgbaTexture,
-    src_row: u32,
+    src_x0: u32,
+    src_y0: u32,
     tint: Color,
 ) {
-    let y0 = src_row * VANILLA_CELL_H;
-    if y0 + VANILLA_CELL_H > src.height {
+    if src_x0 + VANILLA_CELL_W > src.width || src_y0 + VANILLA_CELL_H > src.height {
         return;
     }
     for ly in 0..VANILLA_CELL_H {
         for lx in 0..VANILLA_CELL_W {
-            let si = ((y0 + ly) * src.width + lx) * 4;
-            let si = si as usize;
+            let si = (((src_y0 + ly) * src.width + src_x0 + lx) * 4) as usize;
             if si + 3 >= src.rgba.len() {
                 continue;
             }
@@ -676,6 +842,26 @@ fn blit_layer_frame(
             dst[di + 3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
         }
     }
+}
+
+/// 测试用：整帧竖条 blit（等价于 `src_x=0`）。
+fn blit_layer_frame(
+    dst: &mut [u8],
+    dst_w: u32,
+    dst_x0: u32,
+    src: &crate::xnb::RgbaTexture,
+    src_row: u32,
+    tint: Color,
+) {
+    blit_layer_cell(
+        dst,
+        dst_w,
+        dst_x0,
+        src,
+        0,
+        src_row * VANILLA_CELL_H,
+        tint,
+    );
 }
 
 #[cfg(test)]
