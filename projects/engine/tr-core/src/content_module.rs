@@ -3,6 +3,8 @@
 //! 玩法定义由实现 [`ContentModule`] 的代码在启动时写入 [`ContentRegistry`]。
 //! 仓库不携带从正版安装导出的表文件。素材只存逻辑键，运行时再从用户安装解析。
 
+use std::collections::HashMap;
+
 use crate::content::{BlockDef, ContentRegistry, ItemDef, WallDef, install, is_installed};
 use crate::tile_sets::{TileSets, install_tile_sets, try_tile_sets};
 use crate::weapon::WeaponStats;
@@ -10,10 +12,15 @@ use crate::{BlockId, ItemId, WallId};
 
 /// 一个内容包。vanilla 与 mod 都实现本 trait。
 pub trait ContentModule {
-    /// 诊断用短名。
+    /// 诊断用短名。同一轮启动里必须唯一。
     fn name(&self) -> &str;
 
-    /// 把本模块的定义写入注册表。不得假设其它模块已写完。
+    /// 必须先完成登记的模块名。缺依赖或成环时启动失败。
+    fn depends_on(&self) -> &[&str] {
+        &[]
+    }
+
+    /// 把本模块的定义写入注册表。不得假设未声明依赖的模块已写完。
     fn register(&self, registry: &mut ContentRegistry) -> Result<(), String>;
 }
 
@@ -25,7 +32,8 @@ pub fn boot_content_modules(modules: &[&dyn ContentModule]) -> Result<(), String
         return Ok(());
     }
     let mut registry = ContentRegistry::new();
-    for module in modules {
+    for &index in module_order(modules)?.iter() {
+        let module = modules[index];
         registry.note_module(module.name());
         module
             .register(&mut registry)
@@ -40,6 +48,52 @@ pub fn boot_content_modules(modules: &[&dyn ContentModule]) -> Result<(), String
         install_tile_sets(sets).map_err(|_| "物块属性表已安装".to_string())?;
     }
     Ok(())
+}
+
+/// 按依赖把模块排成登记顺序。无依赖时保持输入顺序。
+fn module_order(modules: &[&dyn ContentModule]) -> Result<Vec<usize>, String> {
+    let n = modules.len();
+    let mut by_name: HashMap<&str, usize> = HashMap::with_capacity(n);
+    for (index, module) in modules.iter().enumerate() {
+        if by_name.insert(module.name(), index).is_some() {
+            return Err(format!("内容模块重名：{}", module.name()));
+        }
+    }
+    let mut next: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut waiting = vec![0usize; n];
+    for (index, module) in modules.iter().enumerate() {
+        for dep in module.depends_on() {
+            let Some(&dep_index) = by_name.get(dep) else {
+                return Err(format!("模块 {} 依赖未提供的 {}", module.name(), dep));
+            };
+            if dep_index == index {
+                return Err(format!("模块 {} 不能依赖自己", module.name()));
+            }
+            next[dep_index].push(index);
+            waiting[index] += 1;
+        }
+    }
+    let mut ready: Vec<usize> = (0..n).filter(|&index| waiting[index] == 0).collect();
+    ready.sort_unstable();
+    let mut order = Vec::with_capacity(n);
+    while !ready.is_empty() {
+        let index = ready.remove(0);
+        order.push(index);
+        let mut unlocked = Vec::new();
+        for &child in &next[index] {
+            waiting[child] -= 1;
+            if waiting[child] == 0 {
+                unlocked.push(child);
+            }
+        }
+        ready.extend(unlocked);
+        ready.sort_unstable();
+        ready.dedup();
+    }
+    if order.len() != n {
+        return Err("内容模块依赖成环".into());
+    }
+    Ok(order)
 }
 
 /// 从已登记方块派生启动期属性数组。未登记的类型保持 `None`。
@@ -418,5 +472,81 @@ mod tests {
         let sets = try_tile_sets().expect("tile sets");
         assert_eq!(sets.solid(400), Some(true));
         assert_eq!(sets.solid(999), None);
+    }
+
+    struct NamedMod {
+        name: &'static str,
+        deps: &'static [&'static str],
+    }
+
+    impl ContentModule for NamedMod {
+        fn name(&self) -> &str {
+            self.name
+        }
+
+        fn depends_on(&self) -> &[&str] {
+            self.deps
+        }
+
+        fn register(&self, _registry: &mut ContentRegistry) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn dependencies_register_before_dependents() {
+        let child = NamedMod {
+            name: "child",
+            deps: &["base"],
+        };
+        let base = NamedMod {
+            name: "base",
+            deps: &[],
+        };
+        let mods: [&dyn ContentModule; 2] = [&child, &base];
+        let order = super::module_order(&mods).unwrap();
+        assert_eq!(mods[order[0]].name(), "base");
+        assert_eq!(mods[order[1]].name(), "child");
+    }
+
+    #[test]
+    fn missing_dependency_is_rejected() {
+        let only = NamedMod {
+            name: "only",
+            deps: &["missing"],
+        };
+        let mods: [&dyn ContentModule; 1] = [&only];
+        let err = super::module_order(&mods).unwrap_err();
+        assert!(err.contains("missing"));
+    }
+
+    #[test]
+    fn cyclic_dependencies_are_rejected() {
+        let a = NamedMod {
+            name: "a",
+            deps: &["b"],
+        };
+        let b = NamedMod {
+            name: "b",
+            deps: &["a"],
+        };
+        let mods: [&dyn ContentModule; 2] = [&a, &b];
+        let err = super::module_order(&mods).unwrap_err();
+        assert!(err.contains("成环"));
+    }
+
+    #[test]
+    fn duplicate_module_names_are_rejected() {
+        let a = NamedMod {
+            name: "same",
+            deps: &[],
+        };
+        let b = NamedMod {
+            name: "same",
+            deps: &[],
+        };
+        let mods: [&dyn ContentModule; 2] = [&a, &b];
+        let err = super::module_order(&mods).unwrap_err();
+        assert!(err.contains("重名"));
     }
 }
