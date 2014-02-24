@@ -302,6 +302,9 @@ impl ContentRegistry {
                 texture: String::new(),
                 texture_file: None,
                 bag_bonus_slots: 0,
+                is_grapple: false,
+                is_hammer: false,
+                is_accessory: false,
             },
         }
     }
@@ -365,6 +368,21 @@ impl ItemRegistration<'_> {
 
     pub fn bag_slots(mut self, extra: u32) -> Self {
         self.def.bag_bonus_slots = extra;
+        self
+    }
+
+    pub fn grapple(mut self) -> Self {
+        self.def.is_grapple = true;
+        self
+    }
+
+    pub fn hammer(mut self) -> Self {
+        self.def.is_hammer = true;
+        self
+    }
+
+    pub fn accessory(mut self) -> Self {
+        self.def.is_accessory = true;
         self
     }
 

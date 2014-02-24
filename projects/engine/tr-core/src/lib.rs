@@ -513,17 +513,23 @@ impl ItemId {
     }
 
     pub fn is_grapple(self) -> bool {
-        self == Self::GRAPPLE
+        try_content()
+            .and_then(|c| c.item(self))
+            .is_some_and(|d| d.is_grapple)
     }
 
     /// 锤类：优先处理背景墙。
     pub fn is_hammer(self) -> bool {
-        self == Self::WOOD_HAMMER
+        try_content()
+            .and_then(|c| c.item(self))
+            .is_some_and(|d| d.is_hammer)
     }
 
     /// 可装备到饰品槽的物品。
     pub fn is_accessory(self) -> bool {
-        matches!(self, Self::CLOUD_BOTTLE)
+        try_content()
+            .and_then(|c| c.item(self))
+            .is_some_and(|d| d.is_accessory)
     }
 
     /// 持有一件该物品时额外增加的背包格数；非背包道具为 0。

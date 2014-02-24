@@ -97,7 +97,9 @@ impl ContentModule for BootstrapItems {
                     mana_cost: 0.0,
                     ammo: Some(ItemId::WOOD_ARROW),
                 }),
-                x if x == ItemId::WOOD_HAMMER.0 => b.durability(100),
+                x if x == ItemId::WOOD_HAMMER.0 => b.durability(100).hammer(),
+                x if x == ItemId::GRAPPLE.0 => b.grapple(),
+                x if x == ItemId::CLOUD_BOTTLE.0 => b.accessory(),
                 _ => b,
             };
             b.register()?;

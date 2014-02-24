@@ -193,6 +193,12 @@ pub struct ItemDef {
     pub texture_file: Option<u32>,
     /// 持有时额外背包格（布袋等）。
     pub bag_bonus_slots: u32,
+    /// 钩爪。
+    pub is_grapple: bool,
+    /// 锤：优先处理背景墙。
+    pub is_hammer: bool,
+    /// 可装备到饰品槽。
+    pub is_accessory: bool,
 }
 
 /// 背景墙定义。
@@ -349,6 +355,9 @@ impl ContentRegistry {
             texture: String::new(),
             texture_file: None,
             bag_bonus_slots: 0,
+            is_grapple: false,
+            is_hammer: false,
+            is_accessory: false,
         })
     }
 

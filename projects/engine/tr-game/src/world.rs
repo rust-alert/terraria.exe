@@ -1255,6 +1255,10 @@ mod tests {
         assert_eq!(ItemId::WOOD_PICK.mine_power(), Some(25));
         assert_eq!(ItemId::GEL.heal_amount(), Some(18.0));
         assert_eq!(ItemId::CLOTH_BAG.bag_bonus_slots(), 8);
+        assert!(ItemId::GRAPPLE.is_grapple());
+        assert!(ItemId::WOOD_HAMMER.is_hammer());
+        assert!(ItemId::CLOUD_BOTTLE.is_accessory());
+        assert!(!ItemId::WOOD.is_accessory());
         assert_eq!(ItemId::WOOD_SWORD.weapon().map(|w| w.damage), Some(18.0));
         assert_eq!(ItemId::WOOD_BOW.weapon().map(|w| w.ammo), Some(Some(ItemId::WOOD_ARROW)));
         assert_eq!(ItemId::WOOD.label(), "木材");

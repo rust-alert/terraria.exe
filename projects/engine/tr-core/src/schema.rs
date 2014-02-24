@@ -61,6 +61,9 @@ pub fn placeable_item_from_schema(
         texture: item.base.texture.to_string(),
         texture_file: None,
         bag_bonus_slots: 0,
+        is_grapple: false,
+        is_hammer: false,
+        is_accessory: false,
     }
 }
 
@@ -80,6 +83,9 @@ pub fn tool_item_from_schema(path: &ContentPath, item: &TerrariaToolItem) -> Ite
         texture: item.base.texture.to_string(),
         texture_file: None,
         bag_bonus_slots: 0,
+        is_grapple: false,
+        is_hammer: false,
+        is_accessory: false,
     }
 }
 
@@ -99,6 +105,9 @@ pub fn consumable_item_from_schema(path: &ContentPath, item: &TerrariaConsumable
         texture: item.base.texture.to_string(),
         texture_file: None,
         bag_bonus_slots: 0,
+        is_grapple: false,
+        is_hammer: false,
+        is_accessory: false,
     }
 }
 
