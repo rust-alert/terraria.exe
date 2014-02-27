@@ -211,10 +211,12 @@ impl TileAtlas {
             }
             n += 1;
         }
-        if let Some(path) = assets.npc_sheets.get(&crate::sheets::SLIME_NPC_FILE) {
-            if let Some((gpu, uv)) = upload_slime_frame(draw, path) {
-                self.slime = Some(gpu);
-                self.slime_uv = uv;
+        if let Some(file) = crate::sheets::npc_file(tr_core::NpcId::BLUE_SLIME) {
+            if let Some(path) = assets.npc_sheets.get(&file) {
+                if let Some((gpu, uv)) = upload_slime_frame(draw, path) {
+                    self.slime = Some(gpu);
+                    self.slime_uv = uv;
+                }
             }
         }
         n

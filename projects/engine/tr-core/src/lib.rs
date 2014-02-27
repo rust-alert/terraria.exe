@@ -15,12 +15,12 @@ mod wld;
 
 pub use biome::{BiomeId, biome_at};
 pub use content::{
-    BlockDef, BlockFaceKind, ContentRegistry, ItemDef, ItemOverlay, TileOverlay, WallDef, block_def,
-    content, install, install_builtin_fixture, is_installed, item_def, try_content,
+    BlockDef, BlockFaceKind, ContentRegistry, ItemDef, ItemOverlay, NpcDef, TileOverlay, WallDef,
+    block_def, content, install, install_builtin_fixture, is_installed, item_def, try_content,
 };
 pub use content_module::{
-    ContentModule, ItemRegistration, TileRegistration, WallRegistration, boot_content_modules,
-    tile_sets_from_registry,
+    ContentModule, ItemRegistration, NpcRegistration, TileRegistration, WallRegistration,
+    boot_content_modules, tile_sets_from_registry,
 };
 pub use damage::{DamageHit, DamageType, ResistProfile, resolve_damage};
 pub use fluid::FluidLevel;
@@ -346,6 +346,40 @@ impl WallId {
 
     pub fn mineable(self) -> bool {
         self != Self::NONE && self.max_hp() > 0
+    }
+}
+
+/// NPC 类型身份。数值对齐公开 `NPCID`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NpcId(pub u32);
+
+impl NpcId {
+    /// 蓝史莱姆。正版 `NPCID.BlueSlime` = 1。
+    pub const BLUE_SLIME: Self = Self(1);
+    /// 恶魔眼。正版 `NPCID.DemonEye` = 2。
+    pub const DEMON_EYE: Self = Self(2);
+    /// 僵尸。正版 `NPCID.Zombie` = 3。
+    pub const ZOMBIE: Self = Self(3);
+    /// 商人。正版 `NPCID.Merchant` = 17。
+    pub const MERCHANT: Self = Self(17);
+    /// 向导。正版 `NPCID.Guide` = 22。
+    pub const GUIDE: Self = Self(22);
+
+    /// `NPC_N` 文件编号。
+    pub fn texture_file(self) -> Option<u32> {
+        try_content()
+            .and_then(|c| c.npc(self))
+            .and_then(|d| d.texture_file)
+    }
+
+    /// 显示名。
+    pub fn label(self) -> String {
+        if let Some(c) = try_content() {
+            if let Some(d) = c.npc(self) {
+                return d.name.clone();
+            }
+        }
+        "未知".to_string()
     }
 }
 

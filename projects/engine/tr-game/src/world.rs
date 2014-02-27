@@ -1259,6 +1259,13 @@ mod tests {
         assert!(ItemId::WOOD_HAMMER.is_hammer());
         assert!(ItemId::CLOUD_BOTTLE.is_accessory());
         assert!(!ItemId::WOOD.is_accessory());
+        assert_eq!(
+            tr_core::NpcId::BLUE_SLIME.texture_file(),
+            Some(1),
+            "须对齐正版 NPCID.BlueSlime 贴图号"
+        );
+        assert_eq!(tr_core::NpcId::GUIDE.texture_file(), Some(22));
+        assert_eq!(tr_core::NpcId::GUIDE.label(), "向导");
         assert_eq!(ItemId::WOOD_SWORD.weapon().map(|w| w.damage), Some(18.0));
         assert_eq!(ItemId::WOOD_BOW.weapon().map(|w| w.ammo), Some(Some(ItemId::WOOD_ARROW)));
         assert_eq!(ItemId::WOOD.label(), "木材");

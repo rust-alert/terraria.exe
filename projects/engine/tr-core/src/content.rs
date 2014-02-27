@@ -11,7 +11,7 @@ use std::sync::{Arc, OnceLock};
 use spark_core::{ErrorArg, ErrorArgs};
 
 use crate::weapon::WeaponStats;
-use crate::{BlockId, ItemId, WallId};
+use crate::{BlockId, ItemId, NpcId, WallId};
 
 static CONTENT: OnceLock<ContentRegistry> = OnceLock::new();
 
@@ -212,16 +212,27 @@ pub struct WallDef {
     pub texture_file: Option<u32>,
 }
 
+/// NPC 定义。
+#[derive(Debug, Clone)]
+pub struct NpcDef {
+    pub key: String,
+    pub name: String,
+    /// `NPC_N` 文件编号。
+    pub texture_file: Option<u32>,
+}
+
 /// 内容注册表。
 #[derive(Debug, Clone, Default)]
 pub struct ContentRegistry {
     blocks: Vec<Option<BlockDef>>,
     items: Vec<Option<ItemDef>>,
     walls: Vec<Option<WallDef>>,
+    npcs: Vec<Option<NpcDef>>,
     pub(crate) recipes: Vec<crate::RecipeDef>,
     block_keys: HashMap<String, BlockId>,
     item_keys: HashMap<String, ItemId>,
     wall_keys: HashMap<String, WallId>,
+    npc_keys: HashMap<String, NpcId>,
     palette: Vec<ItemId>,
     next_block: u32,
     next_item: u32,
@@ -365,6 +376,27 @@ impl ContentRegistry {
 
     pub fn wall(&self, id: WallId) -> Option<&WallDef> {
         self.walls.get(id.0 as usize).and_then(|s| s.as_ref())
+    }
+
+    pub fn npc(&self, id: NpcId) -> Option<&NpcDef> {
+        self.npcs.get(id.0 as usize).and_then(|s| s.as_ref())
+    }
+
+    pub fn register_npc_at(&mut self, id: NpcId, def: NpcDef) -> Result<(), String> {
+        self.ensure_writable()?;
+        if self.npc_keys.contains_key(&def.key) {
+            return Err(format!("NPC key 重复：{}", def.key));
+        }
+        let idx = id.0 as usize;
+        while self.npcs.len() <= idx {
+            self.npcs.push(None);
+        }
+        if self.npcs[idx].is_some() {
+            return Err(format!("NPC ID {} 已被占用", id.0));
+        }
+        self.npc_keys.insert(def.key.clone(), id);
+        self.npcs[idx] = Some(def);
+        Ok(())
     }
 
     pub fn register_wall_at(&mut self, id: WallId, def: WallDef) -> Result<(), String> {
@@ -707,6 +739,15 @@ fn compute_content_hash(reg: &ContentRegistry) -> u64 {
 
     mix_str(&mut h, "walls");
     for (i, slot) in reg.walls.iter().enumerate() {
+        let Some(def) = slot else {
+            continue;
+        };
+        mix_u64(&mut h, i as u64);
+        mix_str(&mut h, &def.key);
+    }
+
+    mix_str(&mut h, "npcs");
+    for (i, slot) in reg.npcs.iter().enumerate() {
         let Some(def) = slot else {
             continue;
         };

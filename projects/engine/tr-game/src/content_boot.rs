@@ -147,6 +147,7 @@ pub fn register_play_content() {
         &crate::content_items::VanillaWalls,
         &crate::content_items::BootstrapItems,
         &crate::content_recipes::BootstrapRecipes,
+        &crate::content_npcs::VanillaNpcs,
     ])
     .expect("内容图启动");
 }

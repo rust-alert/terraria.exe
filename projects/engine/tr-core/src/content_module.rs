@@ -5,10 +5,10 @@
 
 use std::collections::HashMap;
 
-use crate::content::{BlockDef, ContentRegistry, ItemDef, WallDef, install, is_installed};
+use crate::content::{BlockDef, ContentRegistry, ItemDef, NpcDef, WallDef, install, is_installed};
 use crate::tile_sets::{TileSets, install_tile_sets, try_tile_sets};
 use crate::weapon::WeaponStats;
-use crate::{BlockId, ItemId, WallId};
+use crate::{BlockId, ItemId, NpcId, WallId};
 
 /// 一个内容包。vanilla 与 mod 都实现本 trait。
 pub trait ContentModule {
@@ -323,6 +323,19 @@ impl ContentRegistry {
             },
         }
     }
+
+    /// 开始登记 `id` 号 NPC。
+    pub fn npc_entry(&mut self, id: u32) -> NpcRegistration<'_> {
+        NpcRegistration {
+            registry: self,
+            id,
+            def: NpcDef {
+                key: format!("unnamed_npc:{id}"),
+                name: String::new(),
+                texture_file: Some(id),
+            },
+        }
+    }
 }
 
 impl ItemRegistration<'_> {
@@ -439,6 +452,38 @@ impl WallRegistration<'_> {
         }
         self.registry
             .register_wall_at(WallId(self.id), self.def)
+    }
+}
+
+/// NPC 登记进行中。
+pub struct NpcRegistration<'a> {
+    registry: &'a mut ContentRegistry,
+    id: u32,
+    def: NpcDef,
+}
+
+impl NpcRegistration<'_> {
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.def.key = key.into();
+        self
+    }
+
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.def.name = name.into();
+        self
+    }
+
+    pub fn npc_file(mut self, file_id: u32) -> Self {
+        self.def.texture_file = Some(file_id);
+        self
+    }
+
+    pub fn register(self) -> Result<(), String> {
+        if self.def.name.is_empty() {
+            return Err(format!("NPC {} 缺少显示名", self.id));
+        }
+        self.registry
+            .register_npc_at(NpcId(self.id), self.def)
     }
 }
 

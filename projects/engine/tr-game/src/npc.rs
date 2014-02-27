@@ -24,10 +24,11 @@ impl TownKind {
     }
 
     pub fn npc_file(self) -> u32 {
-        match self {
-            Self::Guide => 22,
-            Self::Merchant => 17,
-        }
+        let id = match self {
+            Self::Guide => tr_core::NpcId::GUIDE,
+            Self::Merchant => tr_core::NpcId::MERCHANT,
+        };
+        id.texture_file().unwrap_or(id.0)
     }
 
     pub fn lines(self) -> &'static [&'static str] {
@@ -220,36 +221,40 @@ impl NpcAtlas {
                 Err(e) => tracing::warn!(?e, file, "NPC 纹理上传失败"),
             }
         }
-        if let Some(path) = assets.npc_sheets.get(&crate::sheets::ZOMBIE_NPC_FILE) {
-            if let Ok(tex) = crate::xnb::decode_texture_file(path) {
-                if tex.width > 0 && tex.height >= 40 {
-                    let cell_h = if tex.width == 40 && tex.height >= 56 {
-                        56
-                    } else {
-                        tex.width.min(tex.height).max(1)
-                    };
-                    let uv = Rect::new(0.0, 0.0, 1.0, cell_h as f32 / tex.height as f32);
-                    match draw.create_texture(tex.width, tex.height, tex.rgba) {
-                        Ok(id) => {
-                            self.cell_w = tex.width;
-                            self.cell_h = cell_h;
-                            self.zombie = Some((id, uv));
+        if let Some(file) = crate::sheets::npc_file(tr_core::NpcId::ZOMBIE) {
+            if let Some(path) = assets.npc_sheets.get(&file) {
+                if let Ok(tex) = crate::xnb::decode_texture_file(path) {
+                    if tex.width > 0 && tex.height >= 40 {
+                        let cell_h = if tex.width == 40 && tex.height >= 56 {
+                            56
+                        } else {
+                            tex.width.min(tex.height).max(1)
+                        };
+                        let uv = Rect::new(0.0, 0.0, 1.0, cell_h as f32 / tex.height as f32);
+                        match draw.create_texture(tex.width, tex.height, tex.rgba) {
+                            Ok(id) => {
+                                self.cell_w = tex.width;
+                                self.cell_h = cell_h;
+                                self.zombie = Some((id, uv));
+                            }
+                            Err(e) => tracing::warn!(?e, "僵尸纹理上传失败"),
                         }
-                        Err(e) => tracing::warn!(?e, "僵尸纹理上传失败"),
                     }
                 }
             }
         }
-        if let Some(path) = assets.npc_sheets.get(&crate::sheets::DEMON_EYE_NPC_FILE) {
-            if let Ok(tex) = crate::xnb::decode_texture_file(path) {
-                if tex.width > 0 && tex.height > 0 {
-                    let (uv, cw, ch) = first_anim_cell(tex.width, tex.height);
-                    match draw.create_texture(tex.width, tex.height, tex.rgba) {
-                        Ok(id) => {
-                            self.demon_cell = (cw, ch);
-                            self.demon_eye = Some((id, uv));
+        if let Some(file) = crate::sheets::npc_file(tr_core::NpcId::DEMON_EYE) {
+            if let Some(path) = assets.npc_sheets.get(&file) {
+                if let Ok(tex) = crate::xnb::decode_texture_file(path) {
+                    if tex.width > 0 && tex.height > 0 {
+                        let (uv, cw, ch) = first_anim_cell(tex.width, tex.height);
+                        match draw.create_texture(tex.width, tex.height, tex.rgba) {
+                            Ok(id) => {
+                                self.demon_cell = (cw, ch);
+                                self.demon_eye = Some((id, uv));
+                            }
+                            Err(e) => tracing::warn!(?e, "恶魔眼纹理上传失败"),
                         }
-                        Err(e) => tracing::warn!(?e, "恶魔眼纹理上传失败"),
                     }
                 }
             }

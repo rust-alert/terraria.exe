@@ -18,6 +18,7 @@ mod container;
 mod content_boot;
 mod content_export;
 mod content_items;
+mod content_npcs;
 mod content_recipes;
 mod content_tiles;
 mod craft;
