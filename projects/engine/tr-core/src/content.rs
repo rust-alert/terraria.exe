@@ -4,7 +4,7 @@
 //! - 字符串 `key`（如 `terraria:dirt`）是 mod 稳定标识。
 //! - 玩法行由 [`crate::ContentModule`] 在启动时登记，不从仓库内表文件灌入。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::{Arc, OnceLock};
 
@@ -230,6 +230,8 @@ pub struct ContentRegistry {
     modules: Vec<String>,
     /// 冻结时算出的内容图指纹。未冻结为 0。
     content_hash: u64,
+    /// 已占用的覆盖字段。键为 `种类\0key\0字段`。
+    overlay_claims: HashSet<String>,
 }
 
 impl ContentRegistry {
@@ -487,6 +489,170 @@ impl ContentRegistry {
         } else {
             Ok(())
         }
+    }
+
+    /// 覆盖已登记物块的部分字段。目标 key 必须已经存在。
+    pub fn overlay_tile(&mut self, key: impl Into<String>) -> TileOverlay<'_> {
+        TileOverlay {
+            registry: self,
+            key: key.into(),
+            name: None,
+            solid: None,
+            max_hp: None,
+            light_radius: None,
+            house_space: None,
+            house_furniture: None,
+        }
+    }
+
+    /// 覆盖已登记物品的部分字段。目标 key 必须已经存在。
+    pub fn overlay_item(&mut self, key: impl Into<String>) -> ItemOverlay<'_> {
+        ItemOverlay {
+            registry: self,
+            key: key.into(),
+            name: None,
+            heal: None,
+            mine_power: None,
+        }
+    }
+
+    fn claim_overlay(&mut self, kind: &str, key: &str, field: &str) -> Result<(), String> {
+        let token = format!("{kind}\0{key}\0{field}");
+        if !self.overlay_claims.insert(token) {
+            return Err(format!("覆盖冲突：{kind} {key} 的 {field} 已被写入"));
+        }
+        Ok(())
+    }
+}
+
+/// 对已登记物块的字段覆盖。未写出的字段保持原值。
+pub struct TileOverlay<'a> {
+    registry: &'a mut ContentRegistry,
+    key: String,
+    name: Option<String>,
+    solid: Option<bool>,
+    max_hp: Option<u16>,
+    light_radius: Option<i32>,
+    house_space: Option<bool>,
+    house_furniture: Option<bool>,
+}
+
+impl TileOverlay<'_> {
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+
+    pub fn solid(mut self, value: bool) -> Self {
+        self.solid = Some(value);
+        self
+    }
+
+    pub fn max_hp(mut self, value: u16) -> Self {
+        self.max_hp = Some(value);
+        self
+    }
+
+    pub fn light_radius(mut self, value: i32) -> Self {
+        self.light_radius = Some(value);
+        self
+    }
+
+    pub fn house_space(mut self, value: bool) -> Self {
+        self.house_space = Some(value);
+        self
+    }
+
+    pub fn house_furniture(mut self, value: bool) -> Self {
+        self.house_furniture = Some(value);
+        self
+    }
+
+    pub fn apply(self) -> Result<(), String> {
+        self.registry.ensure_writable()?;
+        let id = self
+            .registry
+            .block_keys
+            .get(&self.key)
+            .copied()
+            .ok_or_else(|| format!("覆盖目标不存在：{}", self.key))?;
+        if let Some(name) = self.name.clone() {
+            self.registry.claim_overlay("tile", &self.key, "name")?;
+            self.registry.blocks[id.0 as usize].as_mut().unwrap().name = name;
+        }
+        if let Some(solid) = self.solid {
+            self.registry.claim_overlay("tile", &self.key, "solid")?;
+            let slot = self.registry.blocks[id.0 as usize].as_mut().unwrap();
+            slot.solid = solid;
+            slot.blocks_motion = solid;
+        }
+        if let Some(max_hp) = self.max_hp {
+            self.registry.claim_overlay("tile", &self.key, "max_hp")?;
+            self.registry.blocks[id.0 as usize].as_mut().unwrap().max_hp = max_hp;
+        }
+        if let Some(light) = self.light_radius {
+            self.registry.claim_overlay("tile", &self.key, "light_radius")?;
+            self.registry.blocks[id.0 as usize].as_mut().unwrap().light_radius = light;
+        }
+        if let Some(space) = self.house_space {
+            self.registry.claim_overlay("tile", &self.key, "house_space")?;
+            self.registry.blocks[id.0 as usize].as_mut().unwrap().house_space = space;
+        }
+        if let Some(furn) = self.house_furniture {
+            self.registry
+                .claim_overlay("tile", &self.key, "house_furniture")?;
+            self.registry.blocks[id.0 as usize].as_mut().unwrap().house_furniture = furn;
+        }
+        Ok(())
+    }
+}
+
+/// 对已登记物品的字段覆盖。未写出的字段保持原值。
+pub struct ItemOverlay<'a> {
+    registry: &'a mut ContentRegistry,
+    key: String,
+    name: Option<String>,
+    heal: Option<f32>,
+    mine_power: Option<u16>,
+}
+
+impl ItemOverlay<'_> {
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+
+    pub fn heal(mut self, amount: f32) -> Self {
+        self.heal = Some(amount);
+        self
+    }
+
+    pub fn mine_power(mut self, power: u16) -> Self {
+        self.mine_power = Some(power);
+        self
+    }
+
+    pub fn apply(self) -> Result<(), String> {
+        self.registry.ensure_writable()?;
+        let id = self
+            .registry
+            .item_keys
+            .get(&self.key)
+            .copied()
+            .ok_or_else(|| format!("覆盖目标不存在：{}", self.key))?;
+        if let Some(name) = self.name.clone() {
+            self.registry.claim_overlay("item", &self.key, "name")?;
+            self.registry.items[id.0 as usize].as_mut().unwrap().name = name;
+        }
+        if let Some(heal) = self.heal {
+            self.registry.claim_overlay("item", &self.key, "heal")?;
+            self.registry.items[id.0 as usize].as_mut().unwrap().heal = Some(heal);
+        }
+        if let Some(power) = self.mine_power {
+            self.registry.claim_overlay("item", &self.key, "mine_power")?;
+            self.registry.items[id.0 as usize].as_mut().unwrap().mine_power = Some(power);
+        }
+        Ok(())
     }
 }
 

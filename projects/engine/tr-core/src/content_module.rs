@@ -567,4 +567,32 @@ mod tests {
         let err = super::module_order(&mods).unwrap_err();
         assert!(err.contains("重名"));
     }
+
+    #[test]
+    fn overlay_changes_one_field_and_rejects_a_second_write() {
+        let mut reg = ContentRegistry::new();
+        reg.tile(1)
+            .key("terraria:stone")
+            .name("石头")
+            .solid(true)
+            .max_hp(100)
+            .register()
+            .unwrap();
+        reg.overlay_tile("terraria:stone")
+            .max_hp(80)
+            .apply()
+            .unwrap();
+        let stone = reg.block(crate::BlockId(1)).unwrap();
+        assert_eq!(stone.max_hp, 80);
+        assert!(stone.solid);
+        assert_eq!(stone.name, "石头");
+        let err = reg
+            .overlay_tile("terraria:stone")
+            .max_hp(1)
+            .apply()
+            .unwrap_err();
+        assert!(err.contains("覆盖冲突"));
+        let missing = reg.overlay_tile("missing").name("x").apply().unwrap_err();
+        assert!(missing.contains("不存在"));
+    }
 }

@@ -15,8 +15,8 @@ mod wld;
 
 pub use biome::{BiomeId, biome_at};
 pub use content::{
-    BlockDef, BlockFaceKind, ContentRegistry, ItemDef, WallDef, block_def, content, install,
-    install_builtin_fixture, is_installed, item_def, try_content,
+    BlockDef, BlockFaceKind, ContentRegistry, ItemDef, ItemOverlay, TileOverlay, WallDef, block_def,
+    content, install, install_builtin_fixture, is_installed, item_def, try_content,
 };
 pub use content_module::{
     ContentModule, ItemRegistration, TileRegistration, WallRegistration, boot_content_modules,
