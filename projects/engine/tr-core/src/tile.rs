@@ -127,6 +127,96 @@ impl Tile {
             self.liquid_amount = amount;
         }
     }
+
+    /// 开发会话 / 测试用的固定字节宽度。不是 `.wld` 列编码。
+    pub const WIRE_LEN: usize = 15;
+
+    /// 写出固定宽度字节。字段顺序与 [`Tile::from_wire`] 对应。
+    pub fn to_wire(self) -> [u8; Self::WIRE_LEN] {
+        let mut out = [0u8; Self::WIRE_LEN];
+        out[0..4].copy_from_slice(&self.tile_type.0.to_le_bytes());
+        out[4] = self.wall_type.0;
+        out[5] = self.liquid_amount;
+        out[6] = self.liquid_kind as u8;
+        out[7] = self.slope as u8;
+        out[8..10].copy_from_slice(&self.frame_x.to_le_bytes());
+        out[10..12].copy_from_slice(&self.frame_y.to_le_bytes());
+        let mut flags = 0u8;
+        if self.half_block {
+            flags |= 1 << 0;
+        }
+        if self.wire_red {
+            flags |= 1 << 1;
+        }
+        if self.wire_blue {
+            flags |= 1 << 2;
+        }
+        if self.wire_green {
+            flags |= 1 << 3;
+        }
+        if self.wire_yellow {
+            flags |= 1 << 4;
+        }
+        if self.actuator {
+            flags |= 1 << 5;
+        }
+        if self.inactive {
+            flags |= 1 << 6;
+        }
+        out[12] = flags;
+        out[13] = self.paint;
+        out[14] = self.wall_paint;
+        out
+    }
+
+    /// 从 [`Tile::to_wire`] 字节还原。长度不对或枚举越界则失败。
+    pub fn from_wire(bytes: &[u8]) -> Result<Self, &'static str> {
+        if bytes.len() != Self::WIRE_LEN {
+            return Err("tile wire length");
+        }
+        let tile_type = BlockId(u32::from_le_bytes([
+            bytes[0], bytes[1], bytes[2], bytes[3],
+        ]));
+        let wall_type = WallId(bytes[4]);
+        let liquid_amount = bytes[5];
+        let liquid_kind = match bytes[6] {
+            0 => LiquidKind::None,
+            1 => LiquidKind::Water,
+            2 => LiquidKind::Lava,
+            3 => LiquidKind::Honey,
+            4 => LiquidKind::Shimmer,
+            _ => return Err("liquid kind"),
+        };
+        let slope = match bytes[7] {
+            0 => SlopeKind::None,
+            1 => SlopeKind::BottomRight,
+            2 => SlopeKind::BottomLeft,
+            3 => SlopeKind::TopRight,
+            4 => SlopeKind::TopLeft,
+            _ => return Err("slope"),
+        };
+        let frame_x = i16::from_le_bytes([bytes[8], bytes[9]]);
+        let frame_y = i16::from_le_bytes([bytes[10], bytes[11]]);
+        let flags = bytes[12];
+        Ok(Self {
+            tile_type,
+            wall_type,
+            frame_x,
+            frame_y,
+            liquid_amount,
+            liquid_kind,
+            slope,
+            half_block: flags & (1 << 0) != 0,
+            wire_red: flags & (1 << 1) != 0,
+            wire_blue: flags & (1 << 2) != 0,
+            wire_green: flags & (1 << 3) != 0,
+            wire_yellow: flags & (1 << 4) != 0,
+            actuator: flags & (1 << 5) != 0,
+            inactive: flags & (1 << 6) != 0,
+            paint: bytes[13],
+            wall_paint: bytes[14],
+        })
+    }
 }
 
 #[cfg(test)]
@@ -168,5 +258,27 @@ mod tests {
         assert_eq!(a, b);
         // 紧凑布局：不应接近旧式多 Vec 分表的单格开销。
         assert!(std::mem::size_of::<Tile>() <= 32);
+    }
+
+    #[test]
+    fn wire_bytes_roundtrip_keeps_flags_and_frames() {
+        let mut t = Tile::solid(BlockId::DIRT);
+        t.wall_type = WallId::WOOD;
+        t.set_frame(36, 18);
+        t.set_liquid(LiquidKind::Water, 200);
+        t.half_block = true;
+        t.wire_red = true;
+        t.wire_yellow = true;
+        t.actuator = true;
+        t.paint = 3;
+        t.wall_paint = 5;
+        let bytes = t.to_wire();
+        assert_eq!(bytes.len(), Tile::WIRE_LEN);
+        let back = Tile::from_wire(&bytes).unwrap();
+        assert_eq!(back, t);
+        assert!(Tile::from_wire(&bytes[..14]).is_err());
+        let mut bad = bytes;
+        bad[6] = 9;
+        assert!(Tile::from_wire(&bad).is_err());
     }
 }
