@@ -142,12 +142,13 @@ fn log_pixel_grid(tex: &RgbaTexture) {
 
 /// 只登记玩法模块，不读安装目录。查询物块属性前必须先走到这里。
 pub fn register_play_content() {
+    // 故意打乱输入顺序：依赖排序应先装 tiles / walls，再 items，再 recipes。
     tr_core::boot_content_modules(&[
-        &crate::content_tiles::VanillaTiles,
-        &crate::content_items::VanillaWalls,
-        &crate::content_items::BootstrapItems,
         &crate::content_recipes::BootstrapRecipes,
         &crate::content_npcs::VanillaNpcs,
+        &crate::content_items::BootstrapItems,
+        &crate::content_tiles::VanillaTiles,
+        &crate::content_items::VanillaWalls,
     ])
     .expect("内容图启动");
 }

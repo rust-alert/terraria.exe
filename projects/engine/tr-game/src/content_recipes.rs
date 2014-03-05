@@ -14,6 +14,10 @@ impl ContentModule for BootstrapRecipes {
         "bootstrap_recipes"
     }
 
+    fn depends_on(&self) -> &[&str] {
+        &["bootstrap_items"]
+    }
+
     fn register(&self, registry: &mut ContentRegistry) -> Result<(), String> {
         registry
             .recipe(ItemId::WORKBENCH, 1)

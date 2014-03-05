@@ -12,6 +12,10 @@ impl ContentModule for BootstrapItems {
         "bootstrap_items"
     }
 
+    fn depends_on(&self) -> &[&str] {
+        &["vanilla_tiles", "vanilla_walls"]
+    }
+
     fn register(&self, registry: &mut ContentRegistry) -> Result<(), String> {
         let pick_weapon = WeaponStats {
             kind: WeaponKind::Melee,
