@@ -48,6 +48,8 @@ pub struct TileAtlas {
     crack: Option<TextureId>,
     slime: Option<TextureId>,
     slime_uv: Rect,
+    /// 史莱姆竖条帧数（`Main.npcFrameCount`）。
+    slime_frames: u32,
     ready: bool,
 }
 
@@ -64,6 +66,7 @@ impl TileAtlas {
             crack: None,
             slime: None,
             slime_uv: FULL_UV,
+            slime_frames: 1,
             ready: false,
         }
     }
@@ -213,9 +216,11 @@ impl TileAtlas {
         }
         if let Some(file) = crate::sheets::npc_file(tr_core::NpcId::BLUE_SLIME) {
             if let Some(path) = assets.npc_sheets.get(&file) {
-                if let Some((gpu, uv)) = upload_slime_frame(draw, path) {
+                let frames = crate::sheets::npc_frame_count(tr_core::NpcId::BLUE_SLIME);
+                if let Some((gpu, uv)) = upload_npc_vertical_frames(draw, path, frames) {
                     self.slime = Some(gpu);
                     self.slime_uv = uv;
+                    self.slime_frames = frames.max(1);
                 }
             }
         }
@@ -362,16 +367,23 @@ impl TileAtlas {
             uv: self.slime_uv,
         })
     }
+
+    /// 史莱姆帧数；无贴图时为 1。
+    pub fn slime_frames(&self) -> u32 {
+        self.slime_frames.max(1)
+    }
 }
 
-fn upload_slime_frame(draw: &mut DrawList, path: &Path) -> Option<(TextureId, Rect)> {
+fn upload_npc_vertical_frames(
+    draw: &mut DrawList,
+    path: &Path,
+    frames: u32,
+) -> Option<(TextureId, Rect)> {
     let tex = crate::xnb::decode_texture_file(path).ok()?;
     let image = PixelImage::from_rgba8(tex.width, tex.height, tex.rgba).ok()?;
-    let uv = if image.height() >= image.width() * 2 && image.height() % 2 == 0 {
-        Rect::new(0.0, 0.5, 1.0, 0.5)
-    } else {
-        FULL_UV
-    };
+    let frames = frames.max(1);
+    let cell_h = (image.height() / frames).max(1);
+    let uv = Rect::new(0.0, 0.0, 1.0, cell_h as f32 / image.height() as f32);
     let gpu = upload_rgba(draw, image.width(), image.height(), image.into_rgba())?;
     Some((gpu, uv))
 }

@@ -250,6 +250,7 @@ impl Enemy {
         cam_x: f32,
         cam_y: f32,
         slime: Option<crate::tiles::TileView>,
+        slime_frames: u32,
         zombie: Option<crate::npc::NpcView>,
         zombie_cell: (u32, u32),
         eye: Option<crate::npc::NpcView>,
@@ -258,7 +259,7 @@ impl Enemy {
         match self.kind {
             EnemyKind::Zombie => self.draw_humanoid(draw, cam_x, cam_y, zombie, zombie_cell),
             EnemyKind::DemonEye => self.draw_eye(draw, cam_x, cam_y, eye, eye_cell),
-            EnemyKind::BlueSlime => self.draw_slime(draw, cam_x, cam_y, slime),
+            EnemyKind::BlueSlime => self.draw_slime(draw, cam_x, cam_y, slime, slime_frames),
         }
     }
 
@@ -267,6 +268,10 @@ impl Enemy {
     }
 
     fn draw_hp_bar(&self, draw: &mut DrawList, sx: f32, sy: f32, bw: f32) {
+        // 正版仅在受伤后短暂显示；不常驻血条。
+        if self.hurt_cd <= 0.0 {
+            return;
+        }
         let ratio = (self.hp / self.max_hp).clamp(0.0, 1.0);
         draw.fill_rect(
             Rect::new(sx, sy - 6.0, bw, 3.0),
@@ -293,6 +298,18 @@ impl Enemy {
         let flash = self.hurt_cd > 0.0 || self.windup_t > 0.0;
         if let Some(view) = view {
             let mut uv = view.uv;
+            // 行走时在竖条帧间切换（`npcFrameCount`）。
+            let frames = crate::sheets::npc_frame_count(tr_core::NpcId::ZOMBIE).max(1);
+            if frames > 1 {
+                let fh = uv.h;
+                let frame = if self.vx.abs() > 1.0 {
+                    (((self.bob * 3.0).floor() as i32).rem_euclid(frames as i32)) as u32
+                } else {
+                    0
+                };
+                uv.y = frame as f32 * fh;
+                uv.h = fh;
+            }
             if self.facing < 0.0 {
                 uv.x += uv.w;
                 uv.w = -uv.w;
@@ -314,10 +331,6 @@ impl Enemy {
                 self.kind.body()
             };
             draw.fill_rect(Rect::new(sx, sy, bw, bh), body);
-            draw.fill_rect(
-                Rect::new(sx + 4.0, sy + 4.0, bw - 8.0, 10.0),
-                self.kind.core(),
-            );
         }
         self.draw_hp_bar(draw, sx, sy, bw);
     }
@@ -338,6 +351,13 @@ impl Enemy {
         let flash = self.hurt_cd > 0.0 || self.windup_t > 0.0;
         if let Some(view) = view {
             let mut uv = view.uv;
+            let frames = crate::sheets::npc_frame_count(tr_core::NpcId::DEMON_EYE).max(1);
+            if frames > 1 {
+                let fh = uv.h;
+                let frame = if self.bob.sin() > 0.0 { 0u32 } else { 1.min(frames - 1) };
+                uv.y = frame as f32 * fh;
+                uv.h = fh;
+            }
             if self.facing < 0.0 {
                 uv.x += uv.w;
                 uv.w = -uv.w;
@@ -349,6 +369,7 @@ impl Enemy {
             let tint = if flash {
                 Color::rgb(1.0, 0.65, 0.65)
             } else {
+                // `NPC_2` 已是着色图，不再乘身份色。
                 Color::rgba(1.0, 1.0, 1.0, 1.0)
             };
             draw.tex_rect(view.tex, Rect::new(ox, oy, sprite_w, sprite_h), uv, tint);
@@ -359,20 +380,6 @@ impl Enemy {
                 self.kind.body()
             };
             draw.fill_rect(Rect::new(sx, sy, bw, bh), body);
-            let pupil = (bw * 0.28).max(3.0);
-            let px = if self.facing >= 0.0 {
-                sx + bw * 0.55
-            } else {
-                sx + bw * 0.18
-            };
-            draw.fill_rect(
-                Rect::new(px, sy + bh * 0.28, pupil, pupil),
-                Color::rgb(0.95, 0.9, 0.35),
-            );
-            draw.fill_rect(
-                Rect::new(px + pupil * 0.25, sy + bh * 0.35, pupil * 0.45, pupil * 0.45),
-                Color::rgb(0.08, 0.05, 0.1),
-            );
         }
         self.draw_hp_bar(draw, sx, sy, bw);
     }
@@ -383,66 +390,47 @@ impl Enemy {
         cam_x: f32,
         cam_y: f32,
         slime: Option<crate::tiles::TileView>,
+        slime_frames: u32,
     ) {
         let sx = self.screen_x(cam_x);
         let sy = screen_of(self.y, cam_y);
         let flash = self.hurt_cd > 0.0 || self.windup_t > 0.0;
-        let squash = 1.0 + 0.12 * self.bob.sin();
-        let stretch = 1.0 - 0.10 * self.bob.sin();
-        let slime_w = screen_len(SLIME_W);
-        let slime_h = screen_len(SLIME_H);
-        let bw = slime_w * squash;
-        let bh = slime_h * stretch;
-        let ox = sx + (slime_w - bw) * 0.5;
-        let oy = sy + (slime_h - bh);
-        let foot_x = sx + slime_w * 0.5;
-        let foot_y = sy + slime_h;
-        // 前摇优先：风红脉动；否则追击速度脉动。
-        let chase = (self.vx.abs() / (TILE * 4.0)).clamp(0.0, 1.0);
-        let telegraph = if self.windup_t > 0.0 {
-            0.85 + 0.15 * (self.bob * 8.0).sin().abs()
-        } else {
-            chase * (0.55 + 0.45 * (self.bob * 2.4).sin().abs())
-        };
+        let hit_w = screen_len(SLIME_W);
+        let hit_h = screen_len(SLIME_H);
 
-        // 触地椭圆阴影（三层软边）。
-        for layer in 0..3 {
-            let t = layer as f32 / 2.0;
-            let a = 0.38 * (1.0 - t * 0.4);
-            let rw = slime_w * (0.38 + t * 0.18);
-            let rh = 2.2 + t * 1.4;
-            let color = Color::rgba(0.02, 0.02, 0.06, a);
-            let y0 = (foot_y - rh).floor() as i32;
-            let y1 = (foot_y + rh * 0.3).ceil() as i32;
-            for y in y0..=y1 {
-                let dy = (y as f32 + 0.5 - foot_y) / rh.max(0.5);
-                let inner = 1.0 - dy * dy;
-                if inner <= 0.0 {
-                    continue;
-                }
-                let half = rw * inner.sqrt();
-                draw.fill_rect(Rect::new(foot_x - half, y as f32, half * 2.0, 1.0), color);
+        if let Some(view) = slime {
+            let frames = slime_frames.max(1);
+            let mut uv = view.uv;
+            let fh = uv.h;
+            // 弹跳相位切帧（`npcFrameCount[BlueSlime]=2`）。
+            let frame = if self.bob.sin() > 0.25 {
+                1u32.min(frames - 1)
+            } else {
+                0
+            };
+            uv.y = frame as f32 * fh;
+            uv.h = fh;
+            // 按贴图像素尺寸绘制，不拉伸进碰撞盒。
+            let cell_w = 32.0;
+            let cell_h = 26.0;
+            let sprite_w = screen_len(cell_w);
+            let sprite_h = screen_len(cell_h);
+            let ox = sx + hit_w * 0.5 - sprite_w * 0.5;
+            let oy = sy + hit_h - sprite_h;
+            let body = self.kind.body();
+            let tint = if flash {
+                Color::rgb(1.0, 0.72, 0.88)
+            } else {
+                // `NPC_1` 为灰度，乘蓝史莱姆色。
+                Color::rgba(body.r, body.g, body.b, 1.0)
+            };
+            if self.facing < 0.0 {
+                uv.x += uv.w;
+                uv.w = -uv.w;
             }
-        }
-
-        if telegraph > 0.15 {
-            let pulse = 1.0 + telegraph * 0.15;
-            let tw = bw * pulse;
-            let th = bh * pulse;
-            draw.fill_rect(
-                Rect::new(
-                    ox + (bw - tw) * 0.5 - 2.0,
-                    oy + (bh - th) - 2.0,
-                    tw + 4.0,
-                    th + 4.0,
-                ),
-                Color::rgba(
-                    rim_pre(self, flash).r,
-                    rim_pre(self, flash).g,
-                    rim_pre(self, flash).b,
-                    0.18 + 0.28 * telegraph,
-                ),
-            );
+            draw.tex_rect(view.tex, Rect::new(ox, oy, sprite_w, sprite_h), uv, tint);
+            self.draw_hp_bar(draw, ox, oy, sprite_w);
+            return;
         }
 
         let body = if flash {
@@ -450,75 +438,11 @@ impl Enemy {
         } else {
             self.kind.body()
         };
-        let rim = rim_pre(self, flash);
-        let dest = Rect::new(ox, oy, bw, bh);
-        if let Some(view) = slime {
-            // `NPC_1` 为灰度，乘蓝史莱姆身体色。
-            let body = self.kind.body();
-            let tint = if flash {
-                Color::rgb(1.0, 0.72, 0.88)
-            } else {
-                Color::rgba(body.r, body.g, body.b, 1.0)
-            };
-            draw.tex_rect(view.tex, dest, view.uv, tint);
-        } else {
-            // 外轮廓描边（身份色）
-            draw.fill_rect(
-                Rect::new(ox - 1.0, oy - 1.0, bw + 2.0, bh + 2.0),
-                Color::rgba(rim.r, rim.g, rim.b, 0.55),
-            );
-            draw.fill_rect(dest, body);
-            // 高光核
-            draw.fill_rect(
-                Rect::new(ox + bw * 0.18, oy + bh * 0.18, bw * 0.28, bh * 0.28),
-                Color::rgba(
-                    self.kind.core().r,
-                    self.kind.core().g,
-                    self.kind.core().b,
-                    0.55,
-                ),
-            );
-        }
-        // 双眼始终叠在贴图之上，避免图集路径丢失身份。
-        {
-            let eye_y = oy + bh * 0.28;
-            let eye_dx = if self.facing >= 0.0 { 1.5 } else { -1.5 };
-            draw.fill_rect(
-                Rect::new(ox + bw * 0.22 + eye_dx, eye_y, 3.5, 3.5),
-                Color::rgb(0.95, 0.92, 1.0),
-            );
-            draw.fill_rect(
-                Rect::new(ox + bw * 0.62 + eye_dx, eye_y, 3.5, 3.5),
-                Color::rgb(0.95, 0.92, 1.0),
-            );
-            draw.fill_rect(
-                Rect::new(ox + bw * 0.28 + eye_dx, eye_y + 1.0, 1.8, 1.8),
-                Color::rgb(0.12, 0.08, 0.18),
-            );
-            draw.fill_rect(
-                Rect::new(ox + bw * 0.68 + eye_dx, eye_y + 1.0, 1.8, 1.8),
-                Color::rgb(0.12, 0.08, 0.18),
-            );
-        }
-
-        // 头顶身份短标（受伤闪时更亮）
-        let tag_a = if flash { 0.85 } else { 0.55 + 0.25 * telegraph };
-        draw.fill_rect(
-            Rect::new(ox + bw * 0.35, oy - 4.0, bw * 0.3, 2.0),
-            Color::rgba(rim.r, rim.g, rim.b, tag_a),
-        );
-
-        let ratio = (self.hp / self.max_hp).clamp(0.0, 1.0);
-        draw.fill_rect(
-            Rect::new(sx, sy - screen_len(6.0), slime_w, screen_len(3.0)),
-            Color::rgb(0.12, 0.08, 0.14),
-        );
-        draw.fill_rect(
-            Rect::new(sx, sy - screen_len(6.0), slime_w * ratio, screen_len(3.0)),
-            Color::rgb(0.85, 0.28, 0.42),
-        );
+        draw.fill_rect(Rect::new(sx, sy, hit_w, hit_h), body);
+        self.draw_hp_bar(draw, sx, sy, hit_w);
     }
 }
+
 
 fn rim_pre(enemy: &Enemy, flash: bool) -> Color {
     if flash {

@@ -129,8 +129,9 @@ impl TownNpc {
                 uv.x += uv.w;
                 uv.w = -uv.w;
             }
-            let sprite_w = screen_len(atlas.cell_w as f32);
-            let sprite_h = screen_len(atlas.cell_h as f32);
+            let (cw, ch) = atlas.town_cell(self.kind);
+            let sprite_w = screen_len(cw as f32);
+            let sprite_h = screen_len(ch as f32);
             let ox = sx + w * 0.5 - sprite_w * 0.5;
             let oy = sy + h - sprite_h;
             draw.tex_rect(
@@ -164,6 +165,8 @@ pub struct NpcView {
 pub struct NpcAtlas {
     guide: Option<(TextureId, Rect)>,
     merchant: Option<(TextureId, Rect)>,
+    guide_cell: (u32, u32),
+    merchant_cell: (u32, u32),
     zombie: Option<(TextureId, Rect)>,
     demon_eye: Option<(TextureId, Rect)>,
     demon_cell: (u32, u32),
@@ -177,6 +180,8 @@ impl NpcAtlas {
         Self {
             guide: None,
             merchant: None,
+            guide_cell: (40, 56),
+            merchant_cell: (40, 56),
             zombie: None,
             demon_eye: None,
             demon_cell: (32, 22),
@@ -203,19 +208,25 @@ impl NpcAtlas {
             if tex.width == 0 || tex.height < 40 {
                 continue;
             }
-            let cell_h = if tex.width == 40 && tex.height >= 56 {
-                56
-            } else {
-                tex.width.min(tex.height).max(1)
+            let id = match kind {
+                TownKind::Guide => tr_core::NpcId::GUIDE,
+                TownKind::Merchant => tr_core::NpcId::MERCHANT,
             };
+            let frames = crate::sheets::npc_frame_count(id).max(1);
+            let cell_h = (tex.height / frames).max(1);
             let uv = Rect::new(0.0, 0.0, 1.0, cell_h as f32 / tex.height as f32);
             match draw.create_texture(tex.width, tex.height, tex.rgba) {
-                Ok(id) => {
-                    self.cell_w = tex.width;
-                    self.cell_h = cell_h;
+                Ok(gpu) => {
+                    let cell = (tex.width, cell_h);
                     match kind {
-                        TownKind::Guide => self.guide = Some((id, uv)),
-                        TownKind::Merchant => self.merchant = Some((id, uv)),
+                        TownKind::Guide => {
+                            self.guide_cell = cell;
+                            self.guide = Some((gpu, uv));
+                        }
+                        TownKind::Merchant => {
+                            self.merchant_cell = cell;
+                            self.merchant = Some((gpu, uv));
+                        }
                     }
                 }
                 Err(e) => tracing::warn!(?e, file, "NPC 纹理上传失败"),
@@ -225,11 +236,8 @@ impl NpcAtlas {
             if let Some(path) = assets.npc_sheets.get(&file) {
                 if let Ok(tex) = crate::xnb::decode_texture_file(path) {
                     if tex.width > 0 && tex.height >= 40 {
-                        let cell_h = if tex.width == 40 && tex.height >= 56 {
-                            56
-                        } else {
-                            tex.width.min(tex.height).max(1)
-                        };
+                        let frames = crate::sheets::npc_frame_count(tr_core::NpcId::ZOMBIE);
+                        let cell_h = (tex.height / frames.max(1)).max(1);
                         let uv = Rect::new(0.0, 0.0, 1.0, cell_h as f32 / tex.height as f32);
                         match draw.create_texture(tex.width, tex.height, tex.rgba) {
                             Ok(id) => {
@@ -247,10 +255,12 @@ impl NpcAtlas {
             if let Some(path) = assets.npc_sheets.get(&file) {
                 if let Ok(tex) = crate::xnb::decode_texture_file(path) {
                     if tex.width > 0 && tex.height > 0 {
-                        let (uv, cw, ch) = first_anim_cell(tex.width, tex.height);
+                        let frames = crate::sheets::npc_frame_count(tr_core::NpcId::DEMON_EYE);
+                        let cell_h = (tex.height / frames.max(1)).max(1);
+                        let uv = Rect::new(0.0, 0.0, 1.0, cell_h as f32 / tex.height as f32);
                         match draw.create_texture(tex.width, tex.height, tex.rgba) {
                             Ok(id) => {
-                                self.demon_cell = (cw, ch);
+                                self.demon_cell = (tex.width, cell_h);
                                 self.demon_eye = Some((id, uv));
                             }
                             Err(e) => tracing::warn!(?e, "恶魔眼纹理上传失败"),
@@ -266,6 +276,13 @@ impl NpcAtlas {
             demon_eye = self.demon_eye.is_some(),
             "城镇 / 敌怪 NPC 图集已上传"
         );
+    }
+
+    pub fn town_cell(&self, kind: TownKind) -> (u32, u32) {
+        match kind {
+            TownKind::Guide => self.guide_cell,
+            TownKind::Merchant => self.merchant_cell,
+        }
     }
 
     pub fn view(&self, kind: TownKind) -> Option<NpcView> {
@@ -292,32 +309,6 @@ impl NpcAtlas {
 
     pub fn demon_eye_cell(&self) -> (u32, u32) {
         self.demon_cell
-    }
-}
-
-/// 取动画条的第一帧。竖条按帧高切，横条按帧宽切。
-fn first_anim_cell(w: u32, h: u32) -> (Rect, u32, u32) {
-    if h >= w.saturating_mul(2) {
-        let cell_h = if (32..=48).contains(&w) && h >= 56 {
-            56
-        } else {
-            w.max(1)
-        }
-        .min(h.max(1));
-        (
-            Rect::new(0.0, 0.0, 1.0, cell_h as f32 / h as f32),
-            w,
-            cell_h,
-        )
-    } else if w > h && h > 0 {
-        let cell_w = if w % h == 0 { h } else { h.min(w) };
-        (
-            Rect::new(0.0, 0.0, cell_w as f32 / w as f32, 1.0),
-            cell_w.max(1),
-            h,
-        )
-    } else {
-        (Rect::new(0.0, 0.0, 1.0, 1.0), w.max(1), h.max(1))
     }
 }
 

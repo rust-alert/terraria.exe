@@ -1051,6 +1051,7 @@ impl TerrariaApp {
                 self.cam_x,
                 self.cam_y,
                 self.tile_atlas.slime(),
+                crate::sheets::npc_frame_count(tr_core::NpcId::BLUE_SLIME),
                 self.npc_atlas.zombie(),
                 self.npc_atlas.cell_size(),
                 self.npc_atlas.demon_eye(),
