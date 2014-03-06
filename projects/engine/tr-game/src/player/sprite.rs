@@ -123,6 +123,7 @@ impl PlayerAtlas {
         let out_w = VANILLA_CELL_W * SPRITE_FRAMES as u32;
         let out_h = VANILLA_CELL_H;
         let mut rgba = vec![0u8; (out_w * out_h * 4) as usize];
+        // 1.4.5 男站立：胸 (0,0)，肩 (1,0)。肩行 1 在这版图集里是空的。
         let shoulder = composite_cell(CompositePart::BackShoulder);
         let torso = composite_cell(CompositePart::Torso);
 
@@ -130,10 +131,15 @@ impl PlayerAtlas {
             let dst_x0 = anim * VANILLA_CELL_W;
             let body = body_frame(anim as i32);
             let leg = leg_frame(anim as i32);
+            // 前后臂同一列。第 4 列是静立：后臂横跨身体，前手在右侧。
+            let arm = arm_cell(&by_id[7]);
             let mut blit = |id: u8, cell: Option<(u32, u32)>| {
                 let Some(tex) = by_id[id as usize].as_ref() else {
                     return;
                 };
+                if tex.rgba.chunks_exact(4).all(|p| p[3] == 0) {
+                    return;
+                }
                 let (sx, sy) = match cell {
                     Some(c) => c,
                     None => layer_src_origin(id, tex, body, leg),
@@ -141,39 +147,28 @@ impl PlayerAtlas {
                 blit_layer_cell(&mut rgba, out_w, dst_x0, tex, sx, sy, layer_tint(id));
             };
 
-            // 后臂：传统帧原点（网格取 (0,0)；竖条取 body 行）。
-            blit(7, Some(arm_cell(&by_id[7], body)));
-            blit(8, Some(arm_cell(&by_id[8], body)));
-            blit(13, Some(arm_cell(&by_id[13], body)));
-            // 腿：皮肤 → 鞋 → 裤。
+            // 后臂皮肤、内衣袖、衬衫袖。袖图若整张透明则跳过。
+            blit(7, Some(grid_or_strip(&by_id[7], arm, body)));
+            blit(8, Some(grid_or_strip(&by_id[8], arm, body)));
+            blit(13, Some(grid_or_strip(&by_id[13], arm, body)));
+            // 腿：皮肤 → 鞋 → 裤（裤盖住鞋）。
             blit(10, None);
             blit(12, None);
             blit(11, None);
-            // 躯干皮肤（胸格）。
+            // 胸皮肤，再内衣/衬衫各画肩格和胸格，最后手。
             blit(3, Some(torso_or_strip(&by_id[3], torso, body)));
-            // 无甲复合：仅网格层肩+胸各画一次；竖条整帧只画一次。
-            if by_id[4].as_ref().map(is_grid).unwrap_or(false)
-                || by_id[6].as_ref().map(is_grid).unwrap_or(false)
-            {
-                blit(4, Some(shoulder_or_strip(&by_id[4], shoulder, body)));
-                blit(6, Some(shoulder_or_strip(&by_id[6], shoulder, body)));
-                blit(4, Some(torso_or_strip(&by_id[4], torso, body)));
-                blit(6, Some(torso_or_strip(&by_id[6], torso, body)));
-            } else {
-                blit(4, None);
-                blit(6, None);
-            }
-            // 手（胸格）。
+            blit(4, Some(shoulder_or_strip(&by_id[4], shoulder, body)));
+            blit(6, Some(shoulder_or_strip(&by_id[6], shoulder, body)));
+            blit(4, Some(torso_or_strip(&by_id[4], torso, body)));
+            blit(6, Some(torso_or_strip(&by_id[6], torso, body)));
             blit(5, Some(torso_or_strip(&by_id[5], torso, body)));
-            // 头 / 眼白 / 瞳 / 眼皮。
+            // 头、眼白、瞳、发。眼皮只在眨眼时画，静立不盖住眼睛。
             blit(0, None);
             blit(1, None);
             blit(2, None);
-            blit(15, None);
-            // 发。
             blit(100, None);
-            // 前手（传统帧）。
-            blit(9, Some(arm_cell(&by_id[9], body)));
+            // 前臂皮肤（与后臂同一姿态列）。
+            blit(9, Some(grid_or_strip(&by_id[9], arm, body)));
         }
 
         let n = by_id.iter().filter(|t| t.is_some()).count();
@@ -663,11 +658,12 @@ enum CompositePart {
     BackShoulder,
 }
 
-/// 无甲男站立复合格（列, 行）。胸 (0,0)，后肩 (1,1)。
+/// 无甲男站立复合格。胸 (0,0)，肩 (1,0)。
+/// 这版躯干网格第 1 行没有像素，肩不在 (1,1)。
 fn composite_cell(part: CompositePart) -> (u32, u32) {
     let (col, row) = match part {
         CompositePart::Torso => (0u32, 0u32),
-        CompositePart::BackShoulder => (1, 1),
+        CompositePart::BackShoulder => (1, 0),
     };
     (col * VANILLA_CELL_W, row * VANILLA_CELL_H)
 }
@@ -723,13 +719,30 @@ fn layer_src_origin(
     (0, row * VANILLA_CELL_H)
 }
 
-/// 后/前臂：网格取 (0,0)；竖条取 body 行。
-fn arm_cell(tex: &Option<crate::xnb::RgbaTexture>, body: u32) -> (u32, u32) {
+/// 静立臂格。网格第 0、1 列是空的，臂从第 2 列起。
+/// 第 4 列后臂横跨身体、前手在右侧，前后必须用同一列。
+fn arm_cell(tex: &Option<crate::xnb::RgbaTexture>) -> (u32, u32) {
+    const STANDING_COL: u32 = 4;
     let Some(tex) = tex.as_ref() else {
-        return (0, 0);
+        return (STANDING_COL * VANILLA_CELL_W, 0);
     };
     if is_grid(tex) {
+        (STANDING_COL * VANILLA_CELL_W, 0)
+    } else {
         (0, 0)
+    }
+}
+
+fn grid_or_strip(
+    tex: &Option<crate::xnb::RgbaTexture>,
+    grid_cell: (u32, u32),
+    body: u32,
+) -> (u32, u32) {
+    let Some(tex) = tex.as_ref() else {
+        return grid_cell;
+    };
+    if is_grid(tex) {
+        grid_cell
     } else {
         let rows = (tex.height / VANILLA_CELL_H).max(1);
         (0, body.min(rows.saturating_sub(1)) * VANILLA_CELL_H)
